@@ -1,0 +1,59 @@
+version: '3.2'
+services:
+  streamlit:
+    container_name: 'streamlit'
+    build: './docker/streamlit_docker/.'
+    ports:
+      - "8501:8501" # streamlit
+    expose:
+      - "8501"
+    command: sh -c "tail -f /dev/null"
+    depends_on:
+      - apache
+      - redis_6379
+      - redis_7379
+    volumes:
+      - ./data/streamlit_data:/root/data/ 
+    environment:
+      - 'TZ=Asia/Tokyo'
+    restart: always
+  
+  apache:
+    container_name: 'apache'
+    image: marvambass/apache2-ssl-secure:latest
+    expose :
+      - "443"
+    ports : 
+      - "443:443"
+    volumes:
+      - ./data/apache_data:/root/data/ 
+    restart: always
+
+  redis_6379:
+    container_name: 'redis_6379'
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    expose:
+      - "6379"
+    volumes:
+      - ./data/redis_6379_snapshot/:/data/ # wsl2用
+      - ./docker/redis_conf/6379/:/usr/local/etc/redis/
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    restart: always
+
+  redis_7379:
+    container_name: 'redis_7379'
+    image: redis:latest
+    ports:
+      - "7379:6379"
+    expose:
+      - "6379"
+    volumes:
+      - ./data/redis_7379_snapshot/:/data/ # wsl2用
+      - ./docker/redis_conf/7379/:/usr/local/etc/redis/
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    restart: always
+
+
+
