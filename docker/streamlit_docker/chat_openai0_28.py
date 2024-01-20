@@ -112,7 +112,7 @@ def response_chatgpt(
     logger.debug(f"trim_tokens後のprompt: {str(prompt)}")
     logger.debug(f"trim_tokens後のpromptのトークン数: {calc_token_tiktoken(str(prompt))}")
     try:
-        logger.debug(f"Sending request to OpenAI API with prompt: {prompt}")
+        logger.info(f"Sending request to OpenAI API with prompt: {prompt}, USER_ID : {USER_ID}, model_name : {model_name}")
 
         response = openai.ChatCompletion.create(
             model=model_name,
@@ -374,7 +374,7 @@ if user_msg:
                     stream=False,
                 )
                 title = response["choices"][0]["message"].get("content", "")
-                logger.debug(f'Response for title : {title}')
+                logger.info(f'Response for title : {title}')
                 #logger.debug(f"title : {title}")
             else:
                 title = json.loads(redisCliPastChat.hget(USER_ID, session_id))["title"]
@@ -411,7 +411,7 @@ if user_msg:
                     st.session_state.id, prompt_length - 1, json.dumps(assistant_prompt)
                 )
                 assistant_response_area.write(assistant_msg)
-            logger.debug(f'Response for chat : {assistant_msg}')
+            logger.info(f'Response for chat : {assistant_msg}')
         # logger.debug('Rerun')
         st.rerun()
 
