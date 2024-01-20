@@ -4,15 +4,18 @@ import streamlit as st
 import logging, traceback
 from logging.handlers import TimedRotatingFileHandler
 
+
 def initialize_logger():
-    """ ロガーを初期化する関数 """
+    """ロガーを初期化する関数"""
     # ロガーオブジェクトを取得または作成します
     logger = logging.getLogger(__name__)
     # ロガーのレベルをDEBUGに設定します
     logger.setLevel(logging.DEBUG)
 
     # ログメッセージのフォーマットを設定します
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
     # コンソールへのハンドラを作成し、設定します
     console_handler = logging.StreamHandler()
@@ -20,7 +23,9 @@ def initialize_logger():
     console_handler.setFormatter(formatter)
 
     # ファイルへのハンドラを作成し、設定します
-    file_handler = TimedRotatingFileHandler("../../log/streamlit_logfile.log", when="midnight", interval=1, backupCount=7)
+    file_handler = TimedRotatingFileHandler(
+        "../log/streamlit_logfile.log", when="midnight", interval=1, backupCount=7
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     # ログファイルの日付形式を設定します
@@ -31,19 +36,21 @@ def initialize_logger():
     logger.addHandler(file_handler)
 
     return logger
+
+
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
-if 'logger_initialized' not in st.session_state:
+if "logger_initialized" not in st.session_state:
     logger = initialize_logger()
-    st.session_state['logger_initialized'] = True
+    st.session_state["logger_initialized"] = True
 else:
-    logger = logging.getLogger(__name__)    
+    logger = logging.getLogger(__name__)
 
 from typing import Any, List, Generator, Iterable
 import openai, os, redis, time, json, tiktoken, datetime, requests
 import numpy as np
 from threading import Thread
 from queue import Queue, Empty
-from copy import copy, deepcopy
+from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 
 executor1 = ThreadPoolExecutor(1)
@@ -52,20 +59,6 @@ redisCliPrompt = redis.Redis(host="redis_6379", port=6379, db=0)
 redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
 redisCliPastChat = redis.Redis(host="redis_6379", port=6379, db=2)
 redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
-
-logger.info("start")
-
-def seconds_since_midnight() -> int:
-    t = time.localtime()
-    return t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec
-
-
-def get_day_str(day: datetime.date = None, days_delta: int = 0) -> str:
-    if not (day):
-        day = datetime.date.today()
-    if days_delta:
-        day += datetime.timedelta(days=days_delta)
-    return day.isoformat().split("T")[0]
 
 
 def trim_tokens(
@@ -98,7 +91,7 @@ def trim_tokens(
 
 
 def response_chatgpt(
-    prompt: List[dict], model_name: str = "gpt-3.5-turbo"
+    prompt: List[dict], model_name: str = "gpt-3.5-turbo", stream: bool = True
 ) -> Generator:
     """
     ChatGPTからのレスポンスを取得します。
@@ -118,9 +111,18 @@ def response_chatgpt(
     prompt = trim_tokens(prompt, INPUT_MAX_TOKENS)
     logger.debug(f"trim_tokens後のprompt: {str(prompt)}")
     logger.debug(f"trim_tokens後のpromptのトークン数: {calc_token_tiktoken(str(prompt))}")
-    response = openai.ChatCompletion.create(
-        model=model_name, messages=prompt, stream=True
-    )
+    try:
+        logger.debug(f"Sending request to OpenAI API with prompt: {prompt}")
+
+        response = openai.ChatCompletion.create(
+            model=model_name,
+            messages=prompt,
+            stream=stream,
+        )
+    except Exception as e:
+        logger.error(f"Error while communicating with OpenAI API: {e}")
+        raise
+
     return response
 
 
@@ -191,75 +193,8 @@ def check_rate_limit_exceed(
         return True
 
 
-# セッションにチャットログを追加
-def add_redis_chat_log(response, index):
-    for chunk in response:
-        tmp_assistant_msg = chunk["choices"][0]["delta"].get("content", "")
-        assistant_prompt = json.loads(redisCliPrompt.lindex(st.session_state.id, index))
-        assistant_prompt["content"] += tmp_assistant_msg
-        redisCliPrompt.lset(st.session_state.id, index, json.dumps(assistant_prompt))
-
-
-class MultiGenerator:
-    def __init__(self, generator: Generator = None):
-        """イテレータから複数のキューにデータをプッシュするためのクラス。"""
-        if generator is not None:
-            self.generator = generator
-
-    def set_generator(self, generator: Generator):
-        self.generator = generator
-
-    def queue_push_forever(self) -> None:
-        """イテレータから取得したデータを無限にキューにプッシュするメソッド。"""
-        for chunk in self.generator:
-            for q in self.queues:
-                q.put(chunk)
-
-    def threading_queue_push_forever(self) -> None:
-        """`queue_push_forever` メソッドを別スレッドで実行するメソッド。"""
-        Thread(target=self.queue_push_forever).start()
-
-    def queue_push(self) -> None:
-        """イテレータから次のデータを取得し、全てのキューにプッシュするメソッド。"""
-        chunk = next(self.generator)
-        for q in self.queues:
-            q.put(chunk)
-
-    def get_queue_generators(
-        self, queues_num: int = 1, timeout: float = 5
-    ) -> List[Generator[Any, None, None]]:
-        """指定された数のキューを生成し、それぞれのキューからデータを取得するジェネレータをリストで返すメソッド。
-
-        Args:
-            queues_num (int, optional): 生成するキューの数。デフォルトは1。
-            timeout (float, optional): キューからデータを取得する際のタイムアウト時間（秒）。デフォルトは5。
-
-        Returns:
-            List[Generator[Any, None, None]]: 各キューからデータを取得するジェネレータのリスト。
-        """
-
-        def queue_generator(q: Queue, timeout: float) -> Generator[Any, None, None]:
-            """キューからデータを取得するジェネレータ。
-
-            Args:
-                q (Queue): データを取得するキュー。
-                timeout (float): タイムアウト時間（秒）。
-
-            Yields:
-                Any: キューから取得したデータ。
-            """
-            while True:
-                try:
-                    yield q.get(timeout=timeout)
-                except Empty:
-                    break
-
-        self.queues = [Queue() for _ in range(queues_num)]  # キューを指定された数だけ生成
-        return [queue_generator(q, timeout) for q in self.queues]  # ジェネレータのリストを返す
-
-
 # 利用可能なGPTモデルのリスト
-AVAILABLE_MODELS = {"gpt-3.5-turbo": 1024, "gpt-4": 512}
+AVAILABLE_MODELS = {"gpt-3.5-turbo": 256, "gpt-4": 12}
 # APIキーの設定
 openai.api_key = os.environ["OPENAI_API_KEY"]
 USER_ID = "TESTID"
@@ -270,20 +205,20 @@ ASSISTANT_WARNING = (
 # %%
 # Streamlitアプリの開始時にセッション状態を初期化
 if "id" not in st.session_state:
-    logger.debug('session initialized')
-    st.session_state['id'] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
+    logger.debug("session initialized")
+    st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
     # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
     if not redisCliUserSetting.hexists(USER_ID, "model"):
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
     # もしUSER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
     elif redisCliUserSetting.hget(USER_ID, "model").decode() not in AVAILABLE_MODELS:
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
-    
+
 
 # 過去の最大トークン数
 # INPUT_MAX_TOKENS = 20
 
-logger.debug(f'session_id first : {st.session_state.id}')
+logger.debug(f"session_id first : {st.session_state.id}")
 
 st.title("StreamlitのChatGPTサンプル")
 
@@ -307,8 +242,8 @@ INPUT_MAX_TOKENS = AVAILABLE_MODELS[redisCliUserSetting.hget(USER_ID, "model").d
 
 # サイドバーに「New chat」ボタンを追加します。
 # ボタンがクリックされたときにアプリケーションを再実行します。
-if st.sidebar.button('🔄 New chat'):
-    del st.session_state['id']
+if st.sidebar.button("🔄 **New chat**"):
+    del st.session_state["id"]
     st.rerun()
 
 # 7日分の時間を戻る
@@ -325,27 +260,29 @@ session_id_within_last_seven_days = {
     for id_num in session_id_with_chat_num_within_last_seven_days
 }
 user_chats = redisCliPastChat.hgetall(USER_ID)
-user_chats_within_last_seven_days : dict = {
+user_chats_within_last_seven_days: dict = {
     session_id.decode(): json.loads(chat_data)
     for session_id, chat_data in user_chats.items()
     if session_id.decode() in session_id_within_last_seven_days
 }
 
-user_chats_within_last_seven_days_sorted : list[tuple] = sorted(
+user_chats_within_last_seven_days_sorted: list[tuple] = sorted(
     user_chats_within_last_seven_days.items(), reverse=True
 )
 
-st.sidebar.markdown("<p style='font-size:20px; color:#FFFF00;'>過去のチャット</p>", unsafe_allow_html=True)
+st.sidebar.markdown(
+    "<p style='font-size:20px; color:#FFFF00;'>過去のチャット</p>", unsafe_allow_html=True
+)
 
 for session_id, info in user_chats_within_last_seven_days_sorted:
-    #print(info)
-    title = info['title']
+    # print(info)
+    title = info["title"]
     if len(title) > 15:
-        title = title[:15] + '...'
+        title = title[:15] + "..."
     if st.sidebar.button(title):
         # ボタンがクリックされた場合、session_idをst.session_state.idに代入
-        st.session_state['id'] = session_id
-        logger.debug(f'sessin id button : {st.session_state.id} clicked')
+        st.session_state["id"] = session_id
+        # logger.debug(f'sessin id button : {st.session_state.id} clicked')
         # 画面をリフレッシュ
         st.rerun()
 
@@ -365,7 +302,7 @@ user_msg: str = st.chat_input("ここにメッセージを入力")
 
 # 処理開始
 if user_msg:
-    #logger.debug(f'session_id second : {st.session_state.id}')
+    # logger.debug(f'session_id second : {st.session_state.id}')
 
     # 最新のメッセージを表示
     with st.chat_message("user"):
@@ -382,15 +319,18 @@ if user_msg:
             # st.warning("メッセージが長すぎます。短くしてください。" f"({user_msg_tokens}tokens)")
             raise Exception("メッセージが長すぎます。短くしてください。" f"({user_msg_tokens}tokens)")
         if check_rate_limit_exceed(
-            redisCliAccessTime, key_name="access", late_limit=1, late_limit_period=1
+            redisCliAccessTime, key_name="access",
+            late_limit=1, late_limit_period=1
         ):
             raise Exception("アクセス数が多いため、接続できません。しばらくお待ちください。")
         prompt = [
-                json.loads(prompt)
-                for prompt in redisCliPrompt.lrange(st.session_state.id, 0, -1)
-            ]
-        response = response_chatgpt(prompt
-            
+            json.loads(prompt)
+            for prompt in redisCliPrompt.lrange(st.session_state.id, 0, -1)
+        ]
+        response = response_chatgpt(
+            prompt,
+            model_name=redisCliUserSetting.hget(USER_ID, "model").decode(),
+            stream=True,
         )
     except Exception as e:
         error_flag = True
@@ -407,49 +347,52 @@ if user_msg:
         )
 
         def redisCliPastChatRecord(prompt, timestamp, model, session_id):
-            logger.debug('redisCliPastChatRecord start')
-            try:
-                if not redisCliPastChat.hexists(USER_ID, session_id):
-                    prompt_for_title = copy(prompt[0])
-                    add_prompt = "\n\nこの内容に相応しい短いタイトルを考え、自身のありなしに関わらず、回答としてタイトルだけを'○○'で返してください。"
-                    add_prompt_token_num = calc_token_tiktoken(add_prompt)
-
-                    while True:
-                        if (
-                            INPUT_MAX_TOKENS
-                            >= calc_token_tiktoken(str([prompt_for_title]))
-                            + add_prompt_token_num
-                        ):
-                            break
-                        prompt_for_title["content"] = prompt_for_title["content"][:-1]
-                    prompt_for_title["content"] += add_prompt
-                    logger.debug(f'prompt_for_title : {prompt_for_title}')
-                    title = openai.ChatCompletion.create(
-                        model=model, messages=[prompt_for_title], stream=False
-                    )["choices"][0]['message'].get("content", "")
-                else:
-                    title = json.loads(redisCliPastChat.hget(USER_ID, session_id))[
-                        "title"
-                    ]
-                logger.debug(f'redisCliPastChat hset USER_ID:{USER_ID}')
-                logger.debug(f'session_id:{session_id}')
-                logger.debug(f'timestamp:{timestamp}')
-                logger.debug(f'model:{model}')
-                logger.debug(f'title:{title}')
-                redisCliPastChat.hset(
-                    USER_ID,
-                    session_id,
-                    json.dumps({"timestamp": timestamp, "model": model, "title": title}),
+            #logger.debug('redisCliPastChatRecord start')
+            if not redisCliPastChat.hexists(USER_ID, session_id):
+                prompt_for_title = copy(prompt[0])
+                add_prompt = (
+                    "以下のユーザーメッセージから適切なタイトルを生成してください。メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。メッセージ: "
                 )
-            except:
-                traceback.print_exc()
-
+                add_prompt_token_num = calc_token_tiktoken(add_prompt)
+                count = 0
+                while True:
+                    if (
+                        INPUT_MAX_TOKENS
+                        >= calc_token_tiktoken(str([prompt_for_title]))
+                        + add_prompt_token_num
+                    ):
+                        break
+                    count += 1
+                    if count > 100:
+                        return
+                    prompt_for_title["content"] = prompt_for_title["content"][:-1]
+                prompt_for_title["content"] = add_prompt + prompt_for_title["content"]
+                #logger.debug(f'prompt_for_title : {prompt_for_title}')
+                response = response_chatgpt(
+                    [prompt_for_title],
+                    model_name="gpt-3.5-turbo",
+                    stream=False,
+                )
+                title = response["choices"][0]["message"].get("content", "")
+                logger.debug(f'Response for title : {title}')
+                #logger.debug(f"title : {title}")
+            else:
+                title = json.loads(redisCliPastChat.hget(USER_ID, session_id))["title"]
+            redisCliPastChat.hset(
+                USER_ID,
+                session_id,
+                json.dumps({"timestamp": timestamp, "model": model, "title": title}),
+            )
+            #except Exception:
+            #    traceback.print_exc()
+        #logger.debug('redisCliPastChatRecord submit')
+            
         executor1.submit(
             redisCliPastChatRecord,
             prompt,
             now,
             redisCliUserSetting.hget(USER_ID, "model").decode(),
-            st.session_state.id
+            st.session_state.id,
         )
 
         assistant_prompt = {"role": "assistant", "content": ""}
@@ -468,7 +411,8 @@ if user_msg:
                     st.session_state.id, prompt_length - 1, json.dumps(assistant_prompt)
                 )
                 assistant_response_area.write(assistant_msg)
-        logger.debug('Rerun')
+            logger.debug(f'Response for chat : {assistant_msg}')
+        # logger.debug('Rerun')
         st.rerun()
 
     # 処理終了

@@ -5,3 +5,4 @@ data/apache_data/*
 data/streamlit_data/*
 !data/streamlit_data/.gitkeep
 .env
+*.log
