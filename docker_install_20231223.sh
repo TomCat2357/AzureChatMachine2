@@ -24,7 +24,7 @@ sudo apt update
 # Docker関連のパッケージをインストール
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
-# Dockerグループを作成し、現在のユーザーを追加
+# Dockerグループを作成し、現在のユーザーを追加(sudoをつけないため)
 sudo groupadd docker
 sudo gpasswd -a $USER docker
 

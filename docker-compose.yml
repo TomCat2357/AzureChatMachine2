@@ -5,11 +5,12 @@ services:
     build: './docker/streamlit_docker/.'
     env_file:
       - ./docker/streamlit_docker/.env
-    ports:
-      - "8501:8501" # streamlit
+    #ports:
+    #  - "8501:8501" # streamlit
     expose:
       - "8501"
-    command: sh -c "tail -f /dev/null"
+    #command: sh -c "tail -f /dev/null"
+    command: sh -c "streamlit run chat_openai0_28.py"
     depends_on:
       - apache
       - redis_6379
@@ -20,17 +21,21 @@ services:
     environment:
       - 'TZ=Asia/Tokyo'
     restart: always
+    working_dir: '/root/docker/'
   
   apache:
     container_name: 'apache'
-    image: marvambass/apache2-ssl-secure:latest
+    build: './docker/apache_docker/.'
     expose :
       - "443"
+      - "80"
     ports : 
       - "443:443"
+      - "80:80"
     volumes:
       - ./data/apache_data:/root/data/ 
-      - ./docker/apache_docker:/root/docker/
+      #- ./docker/apache_docker:/root/docker/
+      #- ./docker/apache_docker/keys:/etc/ssl/origin_keys
     restart: always
 
   redis_6379:

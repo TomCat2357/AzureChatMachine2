@@ -1,12 +1,19 @@
 # %%
 
 import streamlit as st
-import logging, traceback
+import logging
 from logging.handlers import TimedRotatingFileHandler
 
 
-def initialize_logger():
-    """ロガーを初期化する関数"""
+def initialize_logger(user_id=""):
+    class CustomLogger(logging.LoggerAdapter):
+        def __init__(self, logger, user_id):
+            super().__init__(logger, {})
+            self.user_id = user_id
+
+        def process(self, msg, kwargs):
+            return f"{self.user_id} - {msg}", kwargs
+    #ロガーを初期化する関数
     # ロガーオブジェクトを取得または作成します
     logger = logging.getLogger(__name__)
     # ロガーのレベルをDEBUGに設定します
@@ -34,13 +41,17 @@ def initialize_logger():
     # ロガーにハンドラを追加します
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
+    
+    if user_id:
+        return CustomLogger(logger, user_id)
+    else:
+        return logger
 
-    return logger
-
+USER_ID = "TESTID"
 
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
-    logger = initialize_logger()
+    logger = initialize_logger(USER_ID)
     st.session_state["logger_initialized"] = True
 else:
     logger = logging.getLogger(__name__)
@@ -112,7 +123,9 @@ def response_chatgpt(
     logger.debug(f"trim_tokens後のprompt: {str(prompt)}")
     logger.debug(f"trim_tokens後のpromptのトークン数: {calc_token_tiktoken(str(prompt))}")
     try:
-        logger.info(f"Sending request to OpenAI API with prompt: {prompt}, USER_ID : {USER_ID}, model_name : {model_name}")
+        logger.info(
+            f"Sending request to OpenAI API with prompt: {prompt}, model_name : {model_name}"
+        )
 
         response = openai.ChatCompletion.create(
             model=model_name,
@@ -193,14 +206,20 @@ def check_rate_limit_exceed(
         return True
 
 
-# 利用可能なGPTモデルのリスト
-AVAILABLE_MODELS = {"gpt-3.5-turbo": 256, "gpt-4": 12}
+
+
 # APIキーの設定
 openai.api_key = os.environ["OPENAI_API_KEY"]
-USER_ID = "TESTID"
 ASSISTANT_WARNING = (
     "注意：私はAIチャットボットで、情報が常に最新または正確であるとは限りません。重要な決定をする前には、他の信頼できる情報源を確認してください。"
 )
+# 利用可能なGPTモデルのリスト
+AVAILABLE_MODELS : dict = json.loads(os.environ["AVAILABLE_MODELS"])
+
+LATE_LIMIT : dict = json.loads(os.environ["LATE_LIMIT"])
+LATE_LIMIT_COUNT : int = LATE_LIMIT["COUNT"]
+LATE_LIMIT_PERIOD : float = LATE_LIMIT["PERIOD"]
+
 
 # %%
 # Streamlitアプリの開始時にセッション状態を初期化
@@ -319,8 +338,10 @@ if user_msg:
             # st.warning("メッセージが長すぎます。短くしてください。" f"({user_msg_tokens}tokens)")
             raise Exception("メッセージが長すぎます。短くしてください。" f"({user_msg_tokens}tokens)")
         if check_rate_limit_exceed(
-            redisCliAccessTime, key_name="access",
-            late_limit=1, late_limit_period=1
+            redisCliAccessTime,
+            key_name="access",
+            late_limit=LATE_LIMIT_COUNT,
+            late_limit_period=LATE_LIMIT_PERIOD,
         ):
             raise Exception("アクセス数が多いため、接続できません。しばらくお待ちください。")
         prompt = [
@@ -347,12 +368,10 @@ if user_msg:
         )
 
         def redisCliPastChatRecord(prompt, timestamp, model, session_id):
-            #logger.debug('redisCliPastChatRecord start')
+            # logger.debug('redisCliPastChatRecord start')
             if not redisCliPastChat.hexists(USER_ID, session_id):
                 prompt_for_title = copy(prompt[0])
-                add_prompt = (
-                    "以下のユーザーメッセージから適切なタイトルを生成してください。メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。メッセージ: "
-                )
+                add_prompt = "以下のユーザーメッセージから適切なタイトルを生成してください。メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。メッセージ: "
                 add_prompt_token_num = calc_token_tiktoken(add_prompt)
                 count = 0
                 while True:
@@ -367,15 +386,15 @@ if user_msg:
                         return
                     prompt_for_title["content"] = prompt_for_title["content"][:-1]
                 prompt_for_title["content"] = add_prompt + prompt_for_title["content"]
-                #logger.debug(f'prompt_for_title : {prompt_for_title}')
+                # logger.debug(f'prompt_for_title : {prompt_for_title}')
                 response = response_chatgpt(
                     [prompt_for_title],
                     model_name="gpt-3.5-turbo",
                     stream=False,
                 )
                 title = response["choices"][0]["message"].get("content", "")
-                logger.info(f'Response for title : {title}')
-                #logger.debug(f"title : {title}")
+                logger.info(f"Response for title : {title}")
+                # logger.debug(f"title : {title}")
             else:
                 title = json.loads(redisCliPastChat.hget(USER_ID, session_id))["title"]
             redisCliPastChat.hset(
@@ -383,10 +402,11 @@ if user_msg:
                 session_id,
                 json.dumps({"timestamp": timestamp, "model": model, "title": title}),
             )
-            #except Exception:
+            # except Exception:
             #    traceback.print_exc()
-        #logger.debug('redisCliPastChatRecord submit')
-            
+
+        # logger.debug('redisCliPastChatRecord submit')
+
         executor1.submit(
             redisCliPastChatRecord,
             prompt,
@@ -411,11 +431,9 @@ if user_msg:
                     st.session_state.id, prompt_length - 1, json.dumps(assistant_prompt)
                 )
                 assistant_response_area.write(assistant_msg)
-            logger.info(f'Response for chat : {assistant_msg}')
+            logger.info(f"Response for chat : {assistant_msg}")
         # logger.debug('Rerun')
         st.rerun()
 
     # 処理終了
 
-
-# %%
