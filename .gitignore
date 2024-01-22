@@ -6,6 +6,7 @@ data/streamlit_data/*
 !data/streamlit_data/.gitkeep
 .env
 *.log
+*.log.*
 *.key
 *.pem
 *.crt

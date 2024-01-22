@@ -11,7 +11,7 @@ openssl req -out ./docker/apache_docker/keys/my_cert.csr -key ./docker/apache_do
 
 # 自己署名証明書を生成
 # オプショナル：SAN（Subject Alternative Name）を含める場合、san.txtファイルのパスを指定
-openssl x509 -req -days 365 -signkey ./docker/apache_docker/keys/my_key.key -in ./docker/apache_docker/keys/my_cert.csr -out ./docker/apache_docker/keys/my_cert.crt -extfile ./apache_san.txt
+openssl x509 -req -days 365 -signkey ./docker/apache_docker/keys/my_key.key -in ./docker/apache_docker/keys/my_cert.csr -out ./docker/apache_docker/keys/my_cert.crt -extfile ./docker/apache_docker/apache_san.txt
 
 # CSRファイルを削除
 rm ./docker/apache_docker/keys/my_cert.csr
