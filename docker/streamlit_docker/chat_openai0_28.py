@@ -1,9 +1,10 @@
 # %%
 
 import streamlit as st
+from streamlit.web.server.websocket_headers import _get_websocket_headers
 import logging
 from logging.handlers import TimedRotatingFileHandler
-
+from bokeh.models.widgets import Div
 
 def initialize_logger(user_id=""):
     class CustomLogger(logging.LoggerAdapter):
@@ -13,7 +14,8 @@ def initialize_logger(user_id=""):
 
         def process(self, msg, kwargs):
             return f"{self.user_id} - {msg}", kwargs
-    #ロガーを初期化する関数
+
+    # ロガーを初期化する関数
     # ロガーオブジェクトを取得または作成します
     logger = logging.getLogger(__name__)
     # ロガーのレベルをDEBUGに設定します
@@ -41,26 +43,16 @@ def initialize_logger(user_id=""):
     # ロガーにハンドラを追加します
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
-    
+
     if user_id:
         return CustomLogger(logger, user_id)
     else:
         return logger
 
-USER_ID = "TESTID"
-
-# Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
-if "logger_initialized" not in st.session_state:
-    logger = initialize_logger(USER_ID)
-    st.session_state["logger_initialized"] = True
-else:
-    logger = logging.getLogger(__name__)
 
 from typing import Any, List, Generator, Iterable
-import openai, os, redis, time, json, tiktoken, datetime, requests
+import openai, os, redis, time, json, tiktoken, datetime
 import numpy as np
-from threading import Thread
-from queue import Queue, Empty
 from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 
@@ -70,6 +62,57 @@ redisCliPrompt = redis.Redis(host="redis_6379", port=6379, db=0)
 redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
 redisCliPastChat = redis.Redis(host="redis_6379", port=6379, db=2)
 redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
+redisCliLoginTime = redis.Redis(host="redis_6379", port=6379, db=4)
+
+# %%
+
+#import pickle
+headers = _get_websocket_headers()
+
+
+
+
+#with open('headers.pkl', 'wb') as f:
+#    pickle.dump(headers, f)
+
+if "USER_ID" not in st.session_state:
+    st.session_state["USER_ID"] = headers["Oidc_claim_sub"]
+    st.session_state["name"] = (
+        (headers["Oidc_claim_family_name"] + " " + headers["Oidc_claim_given_name"])
+        .encode("latin1")
+        .decode("utf8")
+    )
+
+hide_deploy_button_style = """
+<style>
+.stDeployButton {display:none;}
+</style>
+"""
+st.markdown(hide_deploy_button_style, unsafe_allow_html=True)
+
+
+login_time = (int(headers['Oidc_claim_exp']) - 3600)*10**9
+#st.warning(str(int(time.time()) - login_time))
+if not redisCliLoginTime.hexists(st.session_state.USER_ID, login_time):
+    redisCliLoginTime.hset(st.session_state.USER_ID, login_time, True)
+
+if not redisCliLoginTime.hget(st.session_state.USER_ID, login_time):
+    st.warning('ログアウトされました。ブラウザを閉じてください')
+    time.sleep(5)
+    st.rerun()
+    
+
+
+
+# with st.chat_message("assistant"):
+#    st.write(f'USER_ID : {st.session_state.USER_ID}')
+
+# Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
+if "logger_initialized" not in st.session_state:
+    logger = initialize_logger(st.session_state.USER_ID)
+    st.session_state["logger_initialized"] = True
+else:
+    logger = logging.getLogger(__name__)
 
 
 def trim_tokens(
@@ -206,32 +249,39 @@ def check_rate_limit_exceed(
         return True
 
 
-
-
 # APIキーの設定
 openai.api_key = os.environ["OPENAI_API_KEY"]
 ASSISTANT_WARNING = (
     "注意：私はAIチャットボットで、情報が常に最新または正確であるとは限りません。重要な決定をする前には、他の信頼できる情報源を確認してください。"
 )
 # 利用可能なGPTモデルのリスト
-AVAILABLE_MODELS : dict = json.loads(os.environ["AVAILABLE_MODELS"])
+AVAILABLE_MODELS: dict = json.loads(os.environ["AVAILABLE_MODELS"])
 
-LATE_LIMIT : dict = json.loads(os.environ["LATE_LIMIT"])
-LATE_LIMIT_COUNT : int = LATE_LIMIT["COUNT"]
-LATE_LIMIT_PERIOD : float = LATE_LIMIT["PERIOD"]
+LATE_LIMIT: dict = json.loads(os.environ["LATE_LIMIT"])
+LATE_LIMIT_COUNT: int = LATE_LIMIT["COUNT"]
+LATE_LIMIT_PERIOD: float = LATE_LIMIT["PERIOD"]
 
 
 # %%
 # Streamlitアプリの開始時にセッション状態を初期化
 if "id" not in st.session_state:
     logger.debug("session initialized")
-    st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
-    # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
-    if not redisCliUserSetting.hexists(USER_ID, "model"):
-        redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
-    # もしUSER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
-    elif redisCliUserSetting.hget(USER_ID, "model").decode() not in AVAILABLE_MODELS:
-        redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
+    st.session_state["id"] = "{}_{:0>20}".format(
+        st.session_state.USER_ID, int(time.time_ns())
+    )
+    # もしst.session_state.USER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
+    if not redisCliUserSetting.hexists(st.session_state.USER_ID, "model"):
+        redisCliUserSetting.hset(
+            st.session_state.USER_ID, "model", list(AVAILABLE_MODELS.keys())[0]
+        )
+    # もしst.session_state.USER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
+    if (
+        redisCliUserSetting.hget(st.session_state.USER_ID, "model").decode()
+        not in AVAILABLE_MODELS
+    ):
+        redisCliUserSetting.hset(
+            st.session_state.USER_ID, "model", list(AVAILABLE_MODELS.keys())[0]
+        )
 
 
 # 過去の最大トークン数
@@ -239,25 +289,52 @@ if "id" not in st.session_state:
 
 logger.debug(f"session_id first : {st.session_state.id}")
 
-st.title("StreamlitのChatGPTサンプル")
+st.title(st.session_state.name + "さんとのチャット")
+
 
 # 定数定義
+# 環境変数からLOCALHOSTを取得
+#os.environ['LOCALHOST']
+LOCALHOST = 'localhost' 
+logout_url = f"https://{LOCALHOST}/logout"
+#st.sidebar.markdown(f"[ログアウト]({logout_url})", unsafe_allow_html=True)
+
+
+if st.sidebar.button('Logout'):
+    # 新しいタブでログアウトページを開く
+    js_open_new_tab = f"window.location.replace('{logout_url}')"
+    # JavaScriptを組み合わせる
+    js = f"{js_open_new_tab}"
+    html = '<img src onerror="{}">'.format(js)
+    div = Div(text=html)
+    redisCliLoginTime.hset(st.session_state.USER_ID, login_time, False)
+    st.bokeh_chart(div)
+    time.sleep(10)
+    st.rerun()
+        
+        
 
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
 redisCliUserSetting.hset(
-    USER_ID,
+    st.session_state.USER_ID,
     "model",
     st.sidebar.selectbox(
         "GPTモデルを選択してください",  # GPTモデルを選択するためのドロップダウンメニューを表示
         AVAILABLE_MODELS,  # 利用可能なGPTモデルのリスト
         index=list(AVAILABLE_MODELS).index(  # 現在のモデルのインデックスを取得
-            redisCliUserSetting.hget(USER_ID, "model").decode()  # 現在のモデルを取得
+            redisCliUserSetting.hget(
+                st.session_state.USER_ID, "model"
+            ).decode()  # 現在のモデルを取得
         ),
     ),  # 選択されたモデルを設定
 )
-INPUT_MAX_TOKENS = AVAILABLE_MODELS[redisCliUserSetting.hget(USER_ID, "model").decode()]
+INPUT_MAX_TOKENS = AVAILABLE_MODELS[
+    redisCliUserSetting.hget(st.session_state.USER_ID, "model").decode()
+]
 
+
+    
 
 # サイドバーに「New chat」ボタンを追加します。
 # ボタンがクリックされたときにアプリケーションを再実行します。
@@ -278,7 +355,7 @@ session_id_within_last_seven_days = {
     "_".join(id_num.decode().split("_")[:-1])
     for id_num in session_id_with_chat_num_within_last_seven_days
 }
-user_chats = redisCliPastChat.hgetall(USER_ID)
+user_chats = redisCliPastChat.hgetall(st.session_state.USER_ID)
 user_chats_within_last_seven_days: dict = {
     session_id.decode(): json.loads(chat_data)
     for session_id, chat_data in user_chats.items()
@@ -309,6 +386,10 @@ for session_id, info in user_chats_within_last_seven_days_sorted:
 with st.chat_message("assistant"):
     st.write(ASSISTANT_WARNING)
 
+
+# with st.chat_message("assistant"):
+#    for key, value in headers.items():
+##        st.write(f'key : {key}, value : {value}')
 
 # 以前のチャットログを表示
 for chat in redisCliPrompt.lrange(st.session_state.id, 0, -1):
@@ -350,7 +431,9 @@ if user_msg:
         ]
         response = response_chatgpt(
             prompt,
-            model_name=redisCliUserSetting.hget(USER_ID, "model").decode(),
+            model_name=redisCliUserSetting.hget(
+                st.session_state.USER_ID, "model"
+            ).decode(),
             stream=True,
         )
     except Exception as e:
@@ -367,9 +450,9 @@ if user_msg:
             },
         )
 
-        def redisCliPastChatRecord(prompt, timestamp, model, session_id):
+        def redisCliPastChatRecord(prompt, timestamp, model, session_id, user_id):
             # logger.debug('redisCliPastChatRecord start')
-            if not redisCliPastChat.hexists(USER_ID, session_id):
+            if not redisCliPastChat.hexists(user_id, session_id):
                 prompt_for_title = copy(prompt[0])
                 add_prompt = "以下のユーザーメッセージから適切なタイトルを生成してください。メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。メッセージ: "
                 add_prompt_token_num = calc_token_tiktoken(add_prompt)
@@ -396,9 +479,9 @@ if user_msg:
                 logger.info(f"Response for title : {title}")
                 # logger.debug(f"title : {title}")
             else:
-                title = json.loads(redisCliPastChat.hget(USER_ID, session_id))["title"]
+                title = json.loads(redisCliPastChat.hget(user_id, session_id))["title"]
             redisCliPastChat.hset(
-                USER_ID,
+                user_id,
                 session_id,
                 json.dumps({"timestamp": timestamp, "model": model, "title": title}),
             )
@@ -411,8 +494,9 @@ if user_msg:
             redisCliPastChatRecord,
             prompt,
             now,
-            redisCliUserSetting.hget(USER_ID, "model").decode(),
+            redisCliUserSetting.hget(st.session_state.USER_ID, "model").decode(),
             st.session_state.id,
+            st.session_state.USER_ID,
         )
 
         assistant_prompt = {"role": "assistant", "content": ""}
@@ -436,4 +520,3 @@ if user_msg:
         st.rerun()
 
     # 処理終了
-

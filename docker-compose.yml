@@ -26,6 +26,8 @@ services:
   apache:
     container_name: 'apache'
     build: './docker/apache_docker/.'
+    env_file:
+      - ./docker/apache_docker/.env
     expose :
       - "443"
       - "80"

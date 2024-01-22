@@ -43,7 +43,7 @@ ENV PATH "/root/.pyenv/versions/3.10.13/envs/deploy/bin:$PATH"
 # Streamlitのインストール (ここでStreamlitをインストール)
 #RUN /root/.pyenv/versions/3.10.13/envs/deploy/bin/pip install streamlit openai==0.28 tiktoken==0.3.3
 RUN pip install streamlit openai==0.28 tiktoken==0.3.3 Flask redis
-
+RUN pip install --force-reinstall --no-deps bokeh==2.4.3 
 # Streamlitのポート
 EXPOSE 8501
 
@@ -51,4 +51,4 @@ EXPOSE 8501
 ENV OPENAI_API_KEY=""
 
 # AzureGPTをクローン
-RUN cd ~ && git clone https://github.com/tomo2357/AzureGPT.git
+#RUN cd ~ && git clone https://github.com/tomo2357/AzureGPT.git
