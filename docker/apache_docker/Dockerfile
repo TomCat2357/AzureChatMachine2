@@ -20,7 +20,7 @@ RUN chmod 600 /etc/ssl/private/my_key.key && \
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
-      echo '    Redirect permanent / https://localhost/'; \
+      echo '    Redirect permanent / https://\${LOCALHOST}'; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
