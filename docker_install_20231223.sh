@@ -25,11 +25,12 @@ sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
 # Dockerグループを作成し、現在のユーザーを追加(sudoをつけないため)
-sudo groupadd docker
-sudo gpasswd -a $USER docker
+# セキュリティをアップするために、dockerコマンドにsudoを必須とする
+#sudo groupadd docker
+#sudo gpasswd -a $USER docker
 
 # Dockerソケットのグループ所有権を変更
-sudo chgrp docker /var/run/docker.sock
+#sudo chgrp docker /var/run/docker.sock
 
 # Dockerサービスを開始
 sudo service docker start

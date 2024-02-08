@@ -5,6 +5,7 @@ services:
     build: './docker/streamlit_docker/.'
     env_file:
       - ./docker/streamlit_docker/.env
+      - ./docker/streamlit_docker/.env_secret
     #ports:
     #  - "8501:8501" # streamlit
     expose:
@@ -28,6 +29,7 @@ services:
     build: './docker/apache_docker/.'
     env_file:
       - ./docker/apache_docker/.env
+      - ./docker/apache_docker/.env_secret
     expose :
       - "443"
       - "80"

@@ -4,7 +4,7 @@ data/apache_data/*
 !data/apache_data/.gitkeep
 data/streamlit_data/*
 !data/streamlit_data/.gitkeep
-.env
+.env_secret
 *.log
 *.log.*
 *.key
