@@ -22,7 +22,7 @@ echo \
 sudo apt update
 
 # Docker関連のパッケージをインストール
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-compose
 
 # Dockerグループを作成し、現在のユーザーを追加(sudoをつけないため)
 # セキュリティをアップするために、dockerコマンドにsudoを必須とする
