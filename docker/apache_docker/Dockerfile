@@ -3,7 +3,10 @@ FROM ubuntu:latest
 
 # 必要なパッケージのインストール
 RUN apt-get update && \
-    apt-get install -y apache2 wget vim libapache2-mod-auth-openidc
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    apache2 wget vim libapache2-mod-auth-openidc \
+    certbot python3-certbot-apache \
+    && rm -rf /var/lib/apt/lists/*
 
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
