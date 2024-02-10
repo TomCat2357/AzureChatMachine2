@@ -5,32 +5,23 @@ FROM ubuntu:latest
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
     apache2 wget vim libapache2-mod-auth-openidc \
-    certbot python3-certbot-apache \
+    certbot python3-certbot-apache cron \
     && rm -rf /var/lib/apt/lists/*
+
 
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
-
-# ディレクトリの作成と権限変更
-# RUN mkdir /etc/ssl/certs/
-# 秘密鍵と証明書のコピーと権限設定
-COPY ./keys/my_cert.crt /etc/ssl/certs/my_cert.crt
-COPY ./keys/my_key.key /etc/ssl/private/my_key.key
-RUN chmod 600 /etc/ssl/private/my_key.key && \
-    chmod 666 /etc/ssl/certs/my_cert.crt
 
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
-      echo '    Redirect permanent / https://\${LOCALHOST}'; \
+      echo '    Redirect permanent / https://\${DOMAINNAME}'; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
       echo '    SSLEngine on'; \
       echo '    Alias /auth /var/www/html/auth'; \
-      echo '    SSLCertificateFile /etc/ssl/certs/my_cert.crt'; \
-      echo '    SSLCertificateKeyFile /etc/ssl/private/my_key.key'; \
       echo '    ProxyPreserveHost On'; \
       echo '    RewriteEngine On'; \
       echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
@@ -42,14 +33,14 @@ RUN { \
       echo '</IfModule>'; \
     } > /etc/apache2/sites-available/000-default.conf
 
-# ServerName localhostの追記
+# ServerName DOMAINNAMEの追記
 RUN { \
-    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET LOCALHOST PASSPHRASE"; \
-    echo "ServerName \${LOCALHOST}"; \
+    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAINNAME PASSPHRASE"; \
+    echo "ServerName \${DOMAINNAME}"; \
     echo "OIDCProviderMetadataURL https://login.microsoftonline.com/\${TENANT_ID}/v2.0/.well-known/openid-configuration"; \
     echo "OIDCClientID \${CLIENT_ID}"; \
     echo "OIDCClientSecret \${CLIENT_SECRET}"; \
-    echo "OIDCRedirectURI https://\${LOCALHOST}/auth"; \
+    echo "OIDCRedirectURI https://\${DOMAINNAME}/auth"; \
     echo "OIDCCryptoPassphrase \${PASSPHRASE}"; \
     echo "<Location />"; \
     echo "    AuthType openid-connect"; \
@@ -75,5 +66,15 @@ RUN mkdir -p /var/www/html/auth && \
 # 80番ポートと443番ポートを公開
 EXPOSE 80 443
 
-# コンテナ起動時にApache2を実行
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+# Certbotの自動更新設定
+RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
+
+# 初期設定用のスクリプトを作成
+RUN echo '#!/bin/bash' > /init-setup.sh && \
+    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAINNAME} --redirect" >> /init-setup.sh && \
+    echo "cron" >> /init-setup.sh && \
+    echo "apache2ctl -D FOREGROUND" >> /init-setup.sh && \
+    chmod +x /init-setup.sh
+
+# コンテナ起動時にinit.shスクリプトを実行
+CMD ["/bin/bash", "-c", "/init-setup.sh"]
