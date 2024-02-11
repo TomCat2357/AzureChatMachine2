@@ -2,10 +2,13 @@
 FROM ubuntu:latest
 
 # 必要なパッケージのインストール
-RUN apt update && \
-    apt install -y \
-    apache2 wget vim libapache2-mod-auth-openidc cron
-RUN DEBIAN_FRONTEND=noninteractive apt install -y \
+# 必要なパッケージをインストール
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository universe && \
+    apt-get update && \
+    apt-get install -y vim libapache2-mod-auth-openidc apache2 cron
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     certbot python3-certbot-apache  \
     && rm -rf /var/lib/apt/lists/*
 
