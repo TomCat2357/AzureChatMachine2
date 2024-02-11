@@ -53,10 +53,9 @@ cd AzureChatMachine2
 ```bash
 sudo vim docker/apache_docker/.env_secret
 ```
-```bash
-sudo vim docker/apache_docker/.env_secret
-```
-```bash
+
+```.env_secretの中身
+# .env_secret
 # これは秘密鍵や固有のID等を保存するためのファイルです。
 # ".env_secret"にファイル名を変更し、内容も正しいものに書き換えてください。
 EMAIL=LetsEncryptから連絡するためのあなたのメールアドレス 例　abc.edf@gmail.com
