@@ -33,14 +33,14 @@ RUN { \
       echo '</IfModule>'; \
     } > /etc/apache2/sites-available/000-default.conf
 
-# ServerName DOMAINNAMEの追記
+# ServerName DOMAIN_NAMEの追記
 RUN { \
-    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAINNAME PASSPHRASE"; \
-    echo "ServerName \${DOMAINNAME}"; \
+    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
+    echo "ServerName \${DOMAIN_NAME}"; \
     echo "OIDCProviderMetadataURL https://login.microsoftonline.com/\${TENANT_ID}/v2.0/.well-known/openid-configuration"; \
     echo "OIDCClientID \${CLIENT_ID}"; \
     echo "OIDCClientSecret \${CLIENT_SECRET}"; \
-    echo "OIDCRedirectURI https://\${DOMAINNAME}/auth"; \
+    echo "OIDCRedirectURI https://\${DOMAIN_NAME}/auth"; \
     echo "OIDCCryptoPassphrase \${PASSPHRASE}"; \
     echo "<Location />"; \
     echo "    AuthType openid-connect"; \
@@ -71,7 +71,7 @@ EXPOSE 80 443
 
 # 初期設定用のスクリプトを作成
 #RUN echo '#!/bin/bash' > /init-setup.sh && \
-#    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAINNAME} --redirect" >> /init-setup.sh && \
+#    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAIN_NAME} --redirect" >> /init-setup.sh && \
 #    echo "cron" >> /init-setup.sh && \
 #    echo "apache2ctl -D FOREGROUND" >> /init-setup.sh && \
 #    chmod +x /init-setup.sh
