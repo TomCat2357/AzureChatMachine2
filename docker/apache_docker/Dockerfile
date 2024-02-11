@@ -19,7 +19,9 @@ RUN chmod 600 /etc/ssl/private/my_key.key && \
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
 
+# DOMAIN_NAMEの値を環境変数に設定
 ARG DOMAIN_NAME
+ENV DOMAIN_NAME=${DOMAIN_NAME}
 
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
