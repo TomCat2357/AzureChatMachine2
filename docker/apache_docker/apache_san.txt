@@ -2,5 +2,5 @@
 subjectAltName = @alt_names
 
 [ alt_names ]
-DNS.1 = www.chatrobo.com
-DNS.2 = chatrobo.com
+DNS.1 = www.chatrobo.site
+DNS.2 = chatrobo.site

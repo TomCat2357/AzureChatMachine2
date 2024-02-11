@@ -16,5 +16,4 @@ data/streamlit_data/*
 *.pkl
 *test*.*
 Interactive*.*
-apache_san.txt
 .gitignore
