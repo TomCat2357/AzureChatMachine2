@@ -8,6 +8,8 @@ services:
     
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}  # コンテナ実行時に使用
+    ports : 
+      - "8501:8501"
     
     expose:
       - "8501"
