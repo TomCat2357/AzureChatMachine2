@@ -85,19 +85,18 @@ EXPOSE 80 443
 RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful' --dry-run" >> /etc/crontab
 
 # 初期設定用のスクリプトを作成し、実行権限を付与
+# 初期設定用のスクリプトを作成し、実行権限を付与
 RUN echo '#!/bin/bash'"\n"\
 '# Certbotの設定'"\n"\
 'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect --staging'"\n"\
-'# cronの起動'"\n"\
-'cron'"\n"\
-'# Apacheが既に実行中でないことを確認してから起動'"\n"\
+'# Apacheが既に実行中かどうかを確認'"\n"\
 'if ! pidof apache2 > /dev/null; then'"\n"\
+'    echo "Starting Apache..."'"\n"\
 '    apache2ctl -D FOREGROUND'"\n"\
 'else'"\n"\
-'    echo "Apache is already running."'"\n"\
+'    echo "Apache is already running. Keeping it running."'"\n"\
+'    tail -f /dev/null'"\n"\
 'fi' > /init-setup.sh && chmod +x /init-setup.sh
-
-
 
 # コンテナ起動時にinit.shスクリプトを実行
 CMD ["/bin/bash", "-c", "/init-setup.sh"]
