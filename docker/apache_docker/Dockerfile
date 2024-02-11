@@ -2,12 +2,12 @@
 FROM ubuntu:latest
 
 # 必要なパッケージのインストール
-RUN apt-get update && \
-    apt-get install -y \
+RUN apt update && \
+    apt install -y \
     apache2 wget vim libapache2-mod-auth-openidc cron
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    certbot python3-certbot-apache  \
-    && rm -rf /var/lib/apt/lists/*
+#RUN DEBIAN_FRONTEND=noninteractive apt install -y \
+#    certbot python3-certbot-apache  \
+#    && rm -rf /var/lib/apt/lists/*
 
 
 # 必要なモジュールの有効化
@@ -82,5 +82,5 @@ EXPOSE 80 443
 # コンテナ起動時にinit.shスクリプトを実行
 #CMD ["/bin/bash", "-c", "/init-setup.sh"]
 #CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
-#CMD ["apache2ctl", "-D", "FOREGROUND"]
-CMD ["bash", "-c", "tail -f /dev/null"]
+CMD ["apache2ctl", "-D", "FOREGROUND"]
+#CMD ["bash", "-c", "tail -f /dev/null"]
