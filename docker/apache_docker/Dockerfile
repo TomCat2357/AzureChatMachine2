@@ -1,5 +1,5 @@
 # 基本イメージとしてUbuntuを使用
-FROM ubuntu:22.04
+FROM ubuntu:latest
 
 # 必要なパッケージのインストール
 RUN apt-get update && \
@@ -70,12 +70,13 @@ EXPOSE 80 443
 #RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
 
 # 初期設定用のスクリプトを作成
-RUN echo '#!/bin/bash' > /init-setup.sh && \
-    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAINNAME} --redirect" >> /init-setup.sh && \
-    echo "cron" >> /init-setup.sh && \
-    echo "apache2ctl -D FOREGROUND" >> /init-setup.sh && \
-    chmod +x /init-setup.sh
+#RUN echo '#!/bin/bash' > /init-setup.sh && \
+#    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAINNAME} --redirect" >> /init-setup.sh && \
+#    echo "cron" >> /init-setup.sh && \
+#    echo "apache2ctl -D FOREGROUND" >> /init-setup.sh && \
+#    chmod +x /init-setup.sh
 
 # コンテナ起動時にinit.shスクリプトを実行
 #CMD ["/bin/bash", "-c", "/init-setup.sh"]
-CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
+#CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
+CMD ["/bin/bash"]
