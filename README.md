@@ -78,5 +78,5 @@ PASSPHRASE=Apache2で暗号化だかなんだかに使うパスフレーズ
 
 5. Dockerコンテナをビルドして実行します。
 ```bash
-docker-compose up --build -d
+sudo docker-compose up --build -d
 ``` 
