@@ -13,11 +13,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
 
+ARG DOMAIN_NAME
+
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
-      echo '    Redirect permanent / https://www.chatrobo.site'; \
+      echo '    Redirect permanent / ${DOMAIN_NAME}'; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
