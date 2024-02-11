@@ -1,4 +1,3 @@
-<dockerfile>
 # 基本イメージとしてUbuntuを使用
 FROM ubuntu:latest
 
