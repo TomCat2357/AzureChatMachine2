@@ -1,14 +1,12 @@
+<dockerfile>
 # 基本イメージとしてUbuntuを使用
 FROM ubuntu:latest
 
 # 必要なパッケージのインストール
-# 必要なパッケージをインストール
-RUN apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository universe && \
-    apt-get update && \
-    apt-get install -y vim libapache2-mod-auth-openidc apache2 cron
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt update && \
+    apt install -y \
+    apache2 wget vim libapache2-mod-auth-openidc cron
+RUN DEBIAN_FRONTEND=noninteractive apt install -y \
     certbot python3-certbot-apache  \
     && rm -rf /var/lib/apt/lists/*
 
@@ -87,19 +85,12 @@ EXPOSE 80 443
 # Certbotの自動更新設定
 RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful' --dry-run" >> /etc/crontab
 
-# init-setup.shスクリプトを作成
+# 初期設定用のスクリプトを作成
 RUN echo '#!/bin/bash' > /init-setup.sh && \
-    echo 'if [ ! -f "/var/log/init-setup-done" ]; then' >> /init-setup.sh && \
-    echo '    certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect --staging' >> /init-setup.sh && \
-    echo '    touch /var/log/init-setup-done' >> /init-setup.sh && \
-    echo 'fi' >> /init-setup.sh && \
-    echo 'if ! pidof apache2 > /dev/null; then' >> /init-setup.sh && \
-    echo '    apache2ctl -D FOREGROUND' >> /init-setup.sh && \
-    echo 'fi' >> /init-setup.sh && \
+    echo "certbot --apache --non-interactive --agree-tos --email \${EMAIL} -d \${DOMAIN_NAME} --redirect --staging" >> /init-setup.sh && \
+    echo "cron" >> /init-setup.sh && \
+    echo "apache2ctl -D FOREGROUND" >> /init-setup.sh && \
     chmod +x /init-setup.sh
 
 # コンテナ起動時にinit.shスクリプトを実行
 CMD ["/bin/bash", "-c", "/init-setup.sh"]
-#CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
-#CMD ["apache2ctl", "-D", "FOREGROUND"]
-#CMD ["bash", "-c", "tail -f /dev/null"]
