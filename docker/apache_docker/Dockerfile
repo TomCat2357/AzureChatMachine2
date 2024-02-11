@@ -79,4 +79,4 @@ EXPOSE 80 443
 # コンテナ起動時にinit.shスクリプトを実行
 #CMD ["/bin/bash", "-c", "/init-setup.sh"]
 #CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
-CMD ["/bin/bash"]
+CMD ["apache2ctl", "-D", "FOREGROUND"]
