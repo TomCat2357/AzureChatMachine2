@@ -67,7 +67,7 @@ RUN mkdir -p /var/www/html/auth && \
 EXPOSE 80 443
 
 # Certbotの自動更新設定
-RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
+#RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
 
 # 初期設定用のスクリプトを作成
 RUN echo '#!/bin/bash' > /init-setup.sh && \
@@ -77,4 +77,5 @@ RUN echo '#!/bin/bash' > /init-setup.sh && \
     chmod +x /init-setup.sh
 
 # コンテナ起動時にinit.shスクリプトを実行
-CMD ["/bin/bash", "-c", "/init-setup.sh"]
+#CMD ["/bin/bash", "-c", "/init-setup.sh"]
+CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
