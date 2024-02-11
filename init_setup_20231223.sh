@@ -27,20 +27,20 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 
 # Dockerサービスを開始
 sudo service docker start
 
+#!/bin/bash
+
 find ./docker -name ".env_secret_example" | while read filename; do
   target="${filename%_example}"
   echo "発見されたファイル: $filename"
-  echo "$target にコピーしますか？ [y/N]"
-  read answer
-  if [[ "$answer" = "y" ]]; then
-    cp -i "$filename" "$target"
-    if [[ $? -eq 0 ]]; then
-      echo "$filename を $target にコピーしました。"
-    else
-      echo "$filename のコピーはキャンセルされました。"
-    fi
+  echo "$target に自動的にコピーします。"
+  cp -i "$filename" "$target"
+  if [[ $? -eq 0 ]]; then
+    echo "$filename を $target にコピーしました。"
+  else
+    echo "$filename のコピーはキャンセルされました。"
   fi
 done
+
 
 
 # .env_secret_exampleファイルが見つかった場合の説明
