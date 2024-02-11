@@ -16,7 +16,7 @@ RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
-      echo '    Redirect permanent / https://\${DOMAINNAME}'; \
+      echo '    Redirect permanent / https://www.chatrobo.site'; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
