@@ -1,5 +1,12 @@
 #!/bin/bash
-
+# key_gen.shが存在し、実行可能であることを確認
+if [ -f "./key_gen.sh" ]; then
+    echo "key_gen.sh を実行します..."
+    chmod +x ./key_gen.sh
+    ./key_gen.sh
+else
+    echo "key_gen.sh が存在しません。"
+fi
 # システムのパッケージリストを更新
 sudo apt update
 

@@ -11,7 +11,12 @@ openssl req -out ./docker/apache_docker/keys/my_cert.csr -key ./docker/apache_do
 
 # 自己署名証明書を生成、SANを含める
 # 注意：SANを含むための設定ファイル（ここではapache_san.txt）を用意し、適切な設定が含まれていることを確認する
-openssl x509 -req -days 365 -signkey ./docker/apache_docker/keys/my_key.key -in ./docker/apache_docker/keys/my_cert.csr -out ./docker/apache_docker/keys/my_cert.crt -extfile ./docker/apache_docker/apache_san.txt -extensions v3_req
+openssl x509 -req -days 365 \
+    -signkey ./docker/apache_docker/keys/my_key.key \
+    -in ./docker/apache_docker/keys/my_cert.csr \
+    -out ./docker/apache_docker/keys/my_cert.crt  \
+    -extensions v3_req
+    #-extfile ./docker/apache_docker/apache_san.txt
 
 # CSRファイルを削除
 rm ./docker/apache_docker/keys/my_cert.csr

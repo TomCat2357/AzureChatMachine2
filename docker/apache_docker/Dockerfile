@@ -5,10 +5,18 @@ FROM ubuntu:latest
 RUN apt update && \
     apt install -y \
     apache2 wget vim libapache2-mod-auth-openidc cron
-#RUN DEBIAN_FRONTEND=noninteractive apt install -y \
-#    certbot python3-certbot-apache  \
-#    && rm -rf /var/lib/apt/lists/*
+RUN DEBIAN_FRONTEND=noninteractive apt install -y \
+    certbot python3-certbot-apache  \
+    && rm -rf /var/lib/apt/lists/*
 
+# ダミーのカギを作る
+# ディレクトリの作成と権限変更
+RUN mkdir /etc/ssl/certs/
+# 秘密鍵と証明書のコピーと権限設定
+COPY ./keys/my_cert.crt /etc/ssl/certs/my_cert.crt
+COPY ./keys/my_key.key /etc/ssl/private/my_key.key
+RUN chmod 600 /etc/ssl/private/my_key.key && \
+    chmod 666 /etc/ssl/certs/my_cert.crt
 
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
@@ -25,6 +33,8 @@ RUN { \
       echo '<VirtualHost *:443>'; \
       echo '    SSLEngine on'; \
       echo '    Alias /auth /var/www/html/auth'; \
+      echo '    SSLCertificateFile /etc/ssl/certs/my_cert.crt'; \
+      echo '    SSLCertificateKeyFile /etc/ssl/private/my_key.key'; \
       echo '    ProxyPreserveHost On'; \
       echo '    RewriteEngine On'; \
       echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
