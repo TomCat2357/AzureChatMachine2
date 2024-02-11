@@ -56,7 +56,7 @@ cd AzureChatMachine2
 
 3. `init_setup_20231223.sh`を実行して、必要なDocker関連のパッケージをインストールします。また、秘密鍵やlogout時のテナントID、クライアントID等を入力する.env_secretファイルも作成されます。
 ```bash
-./init_setup_20231223.sh
+sudo bash ./init_setup_20231223.sh
 ```
 
 4.`.env_secret`を編集して、必要な情報を入力してください。
