@@ -1,7 +1,7 @@
 # AzureChatMachine2に関するReadMe
 
 ## 概要
-OPENAIのAPIを用いて、GPTとチャットするためのプロジェクトです。Dockerを使用してApacheサーバー、Streamlitアプリケーション、およびRedisデータベースを組み合わせて、ウェブアプリケーション基盤を構築します。
+OPENAIのAPIを用いて、GPTとチャットするためのプロジェクトです。Dockerを使用してApacheサーバー、Streamlitアプリケーション、およびRedisデータベースを組み合わせて、ウェブアプリケーション基盤を構築します。認証にはAzure Entra IDを使用
 
 ## 特徴
 - Apache, Streamlit, Redisそれぞれをコンテナ化し、組み合わせたアプリケーション構成
@@ -18,6 +18,9 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ![Let's Encrypt](https://img.shields.io/badge/Let's%20Encrypt-003A70?logo=letsencrypt&logoColor=white)
 ![Azure](https://img.shields.io/badge/Azure-007FFF?logo=microsoftazure&logoColor=white)
 
+## 必要な準備
+ - **DomainName**: パブリックIPアドレスに紐づいたドメイン名（例 www.hogehoge.com)
+ - **AzureEntraID**: 認証用にアプリケーションを登録し、またユーザー登録も必要
 
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーをホストするコンテナ
@@ -37,7 +40,8 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ## その他
 - **init_setup_20231223.sh**: 最初にDocker関連のパッケージをインストールするスクリプト。
 - **key_gen.sh**: SSL証明書とキーを生成するスクリプト。基本的に使わない
-- **docker/data/redis_6379/dump.rdb**: redisサーバーのスナップショット 
+- **docker/data/redis_6379/dump.rdb**: redisサーバーのスナップショット
+- **docker/data/streamlit_docker/.env**: API利用頻度の限界や使用モデル及び限界トークン数を設定できる。
 
 ## セットアップ方法
 1. このリポジトリをクローンします
