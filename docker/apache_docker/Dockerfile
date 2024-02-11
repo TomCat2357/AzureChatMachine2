@@ -92,7 +92,7 @@ RUN echo '#!/bin/bash' > /init-setup.sh && \
     chmod +x /init-setup.sh
 
 # コンテナ起動時にinit.shスクリプトを実行
-#CMD ["/bin/bash", "-c", "/init-setup.sh"]
+CMD ["/bin/bash", "-c", "/init-setup.sh"]
 #CMD ["/bin/bash", "-c","apache2ctl","-D","FOREGROUND"]
 #CMD ["apache2ctl", "-D", "FOREGROUND"]
-CMD ["bash", "-c", "tail -f /dev/null"]
+#CMD ["bash", "-c", "tail -f /dev/null"]
