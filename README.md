@@ -7,12 +7,14 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 - Apache, Streamlit, Redisそれぞれをコンテナ化し、組み合わせたアプリケーション構成
 - 安全な通信のためのSSL証明書生成スクリプト
 - 初期セットアップを簡単にするスクリプト
+- certbotによるLet'sEncrypt証明書更新（自動）
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
 ![Apache](https://img.shields.io/badge/Apache-D22128?logo=apache&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)
+![Let's Encrypt](https://img.shields.io/badge/Let's%20Encrypt-003A70?logo=letsencrypt&logoColor=white)
 
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーをホストするコンテナ
