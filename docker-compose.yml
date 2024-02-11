@@ -2,12 +2,13 @@ version: '3.2'
 services:
   streamlit:
     container_name: 'streamlit'
-    build: './docker/streamlit_docker/.'
-    env_file:
-      - ./docker/streamlit_docker/.env
-      - ./docker/streamlit_docker/.env_secret
-    #ports:
-    #  - "8501:8501" # streamlit
+    build: 
+      context: ./docker/streamlit_docker/.
+      dockerfile: Dockerfile
+    
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}  # コンテナ実行時に使用
+    
     expose:
       - "8501"
     #command: sh -c "tail -f /dev/null"
@@ -26,10 +27,13 @@ services:
   
   apache:
     container_name: 'apache'
-    build: './docker/apache_docker/.'
+    build: 
+      context: ./docker/apache_docker/.
+      dockerfile: Dockerfile
+      args:
+        DOMAIN_NAME: ${DOMAIN_NAME}
     env_file:
-      - ./docker/apache_docker/.env
-      - ./docker/apache_docker/.env_secret
+      - .env
     expose :
       - "443"
       - "80"

@@ -36,7 +36,7 @@ sudo service docker start
 
 #!/bin/bash
 
-find ./docker -name ".env_secret_example" | while read filename; do
+find ./docker -name ".env_example" | while read filename; do
   target="${filename%_example}"
   echo "発見されたファイル: $filename"
   echo "$target に自動的にコピーします。"
@@ -51,10 +51,10 @@ done
 
 
 # .env_secret_exampleファイルが見つかった場合の説明
-if find ./docker -name ".env_secret_example" -exec false {} +; then
+if find ./docker -name ".env_example" -exec false {} +; then
     echo ""
 else
-    echo ".env_secretファイルは、秘密鍵やAPIキーなどの環境依存の秘密情報を含むテンプレートです。"
-    echo "実際の環境に適した秘密情報を入力してください。"
+    echo ".envファイルは、設定の他、秘密鍵やAPIキーなどの環境依存の秘密情報を含むテンプレートです。"
+    echo "実際の環境に適した設定と秘密情報を入力してください。"
 fi
 
