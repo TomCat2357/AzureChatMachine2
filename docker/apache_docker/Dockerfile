@@ -19,7 +19,7 @@ ARG DOMAIN_NAME
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
-      echo '    Redirect permanent / ${DOMAIN_NAME}'; \
+      echo "    Redirect permanent / https://${DOMAIN_NAME}"; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
