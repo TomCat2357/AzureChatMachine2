@@ -10,8 +10,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ダミーのカギを作る
-# ディレクトリの作成と権限変更
-RUN mkdir /etc/ssl/certs/
 # 秘密鍵と証明書のコピーと権限設定
 COPY ./keys/my_cert.crt /etc/ssl/certs/my_cert.crt
 COPY ./keys/my_key.key /etc/ssl/private/my_key.key
