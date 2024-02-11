@@ -27,10 +27,12 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
       echo '<VirtualHost *:80>'; \
+      echo "    ServerName ${DOMAIN_NAME}"; \
       echo "    Redirect permanent / https://${DOMAIN_NAME}"; \
       echo '</VirtualHost>'; \
       echo '<IfModule mod_ssl.c>'; \
       echo '<VirtualHost *:443>'; \
+      echo "    ServerName ${DOMAIN_NAME}"; \
       echo '    SSLEngine on'; \
       echo '    Alias /auth /var/www/html/auth'; \
       echo '    SSLCertificateFile /etc/ssl/certs/my_cert.crt'; \
