@@ -8,9 +8,9 @@
 - **redis_6379**: Redisデータベースをホストするコンテナ
 
 ## Dockerファイル
-- **streamlit_docker/Dockerfile**: Streamlitコンテナの構成ファイル
-- **apache_docker/Dockerfile**: Apacheコンテナの構成ファイル
-- **redis_conf/6379/redis.conf**: Redis設定ファイル
+- **docker/streamlit_docker/Dockerfile**: Streamlitコンテナの構成ファイル
+- **docker/apache_docker/Dockerfile**: Apacheコンテナの構成ファイル
+- **docker/redis_conf/6379/redis.conf**: Redis設定ファイル
 
 ## サービス構成
 - **streamlit**: Streamlitアプリケーションを実行し、ポート8501を公開
