@@ -3,18 +3,18 @@
 このリポジトリは、Dockerコンテナを使用して複数のサービスを展開するための設定を提供します。
 
 ## Dockerコンテナ構成
-- **streamlit**: Streamlitアプリケーションをホストするコンテナ
 - **apache**: Apacheサーバーをホストするコンテナ
+- **streamlit**: Streamlitアプリケーションをホストするコンテナ
 - **redis_6379**: Redisデータベースをホストするコンテナ
 
 ## Dockerファイル
-- **docker/streamlit_docker/Dockerfile**: Streamlitコンテナの構成ファイル
 - **docker/apache_docker/Dockerfile**: Apacheコンテナの構成ファイル
+- **docker/streamlit_docker/Dockerfile**: Streamlitコンテナの構成ファイル
 - **docker/redis_conf/6379/redis.conf**: Redis設定ファイル
 
 ## サービス構成
+- **apache**: Apacheサーバーを実行し、ポート443と80を公開。
 - **streamlit**: Streamlitアプリケーションを実行し、ポート8501を公開
-- **apache**: Apacheサーバーを実行し、ポート443と80を公開
 - **redis_6379**: Redisデータベースを実行し、ポート6379を公開
 
 ## その他
