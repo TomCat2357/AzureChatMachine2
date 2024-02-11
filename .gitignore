@@ -16,3 +16,4 @@ data/streamlit_data/*
 *test*.*
 Interactive*.*
 apache_san.txt
+.gitignore

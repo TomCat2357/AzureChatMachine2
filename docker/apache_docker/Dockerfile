@@ -1,5 +1,5 @@
 # 基本イメージとしてUbuntuを使用
-FROM ubuntu:latest
+FROM ubuntu:22.04
 
 # 必要なパッケージのインストール
 RUN apt-get update && \

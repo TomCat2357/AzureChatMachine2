@@ -24,14 +24,30 @@ sudo apt update
 # Docker関連のパッケージをインストール
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-compose
 
-# Dockerグループを作成し、現在のユーザーを追加(sudoをつけないため)
-# セキュリティをアップするために、dockerコマンドにsudoを必須とする
-#sudo groupadd docker
-#sudo gpasswd -a $USER docker
-
-# Dockerソケットのグループ所有権を変更
-#sudo chgrp docker /var/run/docker.sock
-
 # Dockerサービスを開始
 sudo service docker start
+
+find ./docker -name ".env_secret_example" | while read filename; do
+  target="${filename%_example}"
+  echo "発見されたファイル: $filename"
+  echo "$target にコピーしますか？ [y/N]"
+  read answer
+  if [[ "$answer" = "y" ]]; then
+    cp -i "$filename" "$target"
+    if [[ $? -eq 0 ]]; then
+      echo "$filename を $target にコピーしました。"
+    else
+      echo "$filename のコピーはキャンセルされました。"
+    fi
+  fi
+done
+
+
+# .env_secret_exampleファイルが見つかった場合の説明
+if find ./docker -name ".env_secret_example" -exec false {} +; then
+    echo ""
+else
+    echo ".env_secretファイルは、秘密鍵やAPIキーなどの環境依存の秘密情報を含むテンプレートです。"
+    echo "実際の環境に適した秘密情報を入力してください。"
+fi
 
