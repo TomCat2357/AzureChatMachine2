@@ -226,7 +226,7 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     headers = {"Oidc_claim_exp" : 0}
-    logout(0)
+    #logout(0)
 
 
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
