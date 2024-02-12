@@ -93,8 +93,17 @@ LATE_LIMIT={"COUNT":1, "PERIOD":1}
 # 使用可能なモデルと限界のトークン数。{"モデル名" : 限界トークン数}となっている。
 AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 ```
+5.LetsEncryptの証明書と秘密鍵がなければDNS01チャレンジを実施する
+```bash
+sudo bash dns_challenge_20240212.sh
+```
 
-5. Dockerコンテナをビルドして実行します。
+6. Dockerコンテナをビルドして実行します。
 ```bash
 sudo docker-compose up --build -d
-``` 
+```
+
+7.ブラウザにURLを打ち込んでChatを開きます。
+```bash
+https://<DOMAIN_NAME>
+```
