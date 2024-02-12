@@ -40,8 +40,6 @@ find . -name ".env_example" | while read filename; do
   fi
 done
 
-
-
 # .envファイルが見つかった場合の説明
 if find . -name ".env" -exec false {} +; then
     echo ""
