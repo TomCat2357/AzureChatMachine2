@@ -28,8 +28,8 @@ if [ -z "$DOMAIN_NAME" ] && [ -z "$EMAIL" ]; then
 fi
 
 # .pemファイルのパス
-PRIVKEY_PATH="./data/apache_letsencrypt/live/${DOMAIN_NAME}/privkey.pem"
-FULLCHAIN_PATH="./data/apache_letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"
+PRIVKEY_PATH="/etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"
+FULLCHAIN_PATH="/etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"
 
 
 
