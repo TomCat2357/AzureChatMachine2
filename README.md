@@ -4,10 +4,10 @@
 OPENAIのAPIを用いて、GPTとチャットするためのプロジェクトです。Dockerを使用してApacheサーバー、Streamlitアプリケーション、およびRedisデータベースを組み合わせて、ウェブアプリケーション基盤を構築します。認証にはAzure Entra IDを使用
 
 ## 特徴
-- Apache, Streamlit, Redisそれぞれをコンテナ化し、組み合わせたアプリケーション構成
-- Azure Entra IDによる認証
-- 初期セットアップを簡単にするスクリプト
-- certbotによるLet'sEncrypt証明書更新（自動）
+- Apache、Streamlit、Redisを各々コンテナ化し、統合したアプリケーション構成。
+- Azure Entra IDを利用した認証システム。
+- 初期セットアップを手軽に行うためのスクリプト。
+- certbotを用いたLet's Encrypt証明書の自動更新機能。
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
@@ -18,29 +18,28 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ![Azure](https://img.shields.io/badge/Azure-007FFF?logo=microsoftazure&logoColor=white)
 
 ## 必要な準備
- - **DomainName**: パブリックIPアドレスに紐づいたドメイン名（例 www.hogehoge.com)
- - **AzureEntraID**: 認証用。ユーザー登録及びアプリ登録（TENANT_ID,CLIENT_ID,CLIENT_SECRETをメモする）
+- **ドメイン名**: パブリックIPアドレスに紐づけられたドメイン名 (例: www.example.com)
+- **Azure Entra ID**: 認証用。ユーザー登録およびアプリ登録を行い、TENANT_ID、CLIENT_ID、CLIENT_SECRETを控えておく。
 
 ## Dockerコンテナ構成
-- **apache**: Apacheサーバーをホストするコンテナ
-- **streamlit**: Streamlitアプリケーションをホストするコンテナ
-- **redis_6379**: Redisデータベースをホストするコンテナ
-
+- **apache**: Apacheサーバーを実行するコンテナ。
+- **streamlit**: Streamlitアプリケーションを実行するコンテナ。
+- **redis_6379**: Redisデータベースを実行するコンテナ。
+- 
 ## Dockerファイル
-- **docker/apache_docker/Dockerfile**: Apacheコンテナの構成ファイル
-- **docker/streamlit_docker/Dockerfile**: Streamlitコンテナの構成ファイル
-- **docker/redis_conf/6379/redis.conf**: Redis設定ファイル
+- **apache_docker/Dockerfile**: Apacheコンテナ用の構成ファイル。
+- **streamlit_docker/Dockerfile**: Streamlitコンテナ用の構成ファイル。
+- **redis_conf/6379/redis.conf**: Redisコンテナの設定ファイル。
 
 ## サービス構成
-- **apache**: Apacheサーバーを実行し、HOSTのポート443と80に接続しています。HOSTの443と80ポートへの接続については、streamlitに転送されます。
-- **streamlit**: Streamlitアプリケーションを実行し、ポート8501を公開。プロンプト等のデータの保存にはredis_6379コンテナを利用しています。
-- **redis_6379**: Redisデータベースを実行し、ポート6379を公開
+- **apache**: Apacheサーバーを実行し、80番および443番ポートでリッスンします。これらのポートへのアクセスはStreamlitへ転送されます。
+- **streamlit**: Streamlitアプリケーションを実行し、8501番ポートを公開します。プロンプトやその他データの保存にはredis_6379コンテナを使用します。
+- **redis_6379**: Redisデータベースを実行し、6379番ポートを公開します。
 
 ## その他
-- **init_setup_20231223.sh**: 最初にDocker関連のパッケージをインストールするスクリプト。
-- **key_gen.sh**: SSL証明書とキーを生成するスクリプト。直接実行する必要はない。init_setup_20231223.shにより実行される。
-- **docker/data/redis_6379/dump.rdb**: redisサーバーのスナップショット
-- **.env**: API利用頻度の限界や使用モデル及び限界トークン数の設定の他、ドメイン名やAzureEntraIDで取得したTENANT_ID等を設定する。
+- **init_setup_20231223.sh**: Docker関連パッケージの初回インストール用スクリプト。
+- **dns_challenge_20240212.sh**: DNS01チャレンジ用。LetsEncryptの証明書がなければ実行
+- **.env**: APIの利用制限、使用モデル、トークン数の限界、ドメイン名、Azure Entra IDで取得したTENANT_IDなどを設定するファイル。
 
 ## セットアップ方法
 1. このリポジトリをクローンします
@@ -53,7 +52,7 @@ git clone https://github.com/TomCat2357/chatrobo.git
 cd chatrobo
 ```
 
-3. `init_setup_20231223.sh`を実行して、必要なDocker関連のパッケージをインストールします。また、秘密鍵やlogout時のテナントID、クライアントID等を入力する.envファイルも作成されます。
+3. init_setup_20231223.shを実行し、必要なDocker関連パッケージをインストールします。また、このステップで.envファイルが作成されます。
 ```bash
 sudo bash ./init_setup_20231223.sh
 ```
@@ -69,10 +68,10 @@ sudo vim .env
 
 ### 秘密情報
 ## apache2
-#LetsEncryptから連絡するためのあなたのメールアドレス
-EMAIL=hogehoge@gmail.com
-#あなたのドメイン名
-DOMAIN_NAME=www.hogehoge.com
+#LetsEncryptから連絡するためのあなたのメールアドレス 例 hogehoge@hogemail.com
+EMAIL=hogehoge@hogemail.com
+#あなたのドメイン名 例 hogehoge.com
+DOMAIN_NAME=hogehoge.com
 #Azureでアプリを登録したテナントID
 TENANT_ID=**********************************
 #Azureでアプリを登録したクライアントID
@@ -93,20 +92,18 @@ LATE_LIMIT={"COUNT":1, "PERIOD":1}
 # 使用可能なモデルと限界のトークン数。{"モデル名" : 限界トークン数}となっている。
 AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 ```
-5.LetsEncryptの証明書と秘密鍵がなければDNS01チャレンジを実施する
+5.Let's Encryptの証明書と秘密鍵をまだ持っていない場合、DNS01チャレンジを実行します。
 ```bash
 sudo bash dns_challenge_20240212.sh
 ```
-実行後、TXTドメイン名（例_acme-challenge.xxx.net）とTXTレコードに入力する値（例 a1BCDf2GH3IJ4KL5MN6oPQ7s8U9VWxYzAbCdEfGhIjK）を示されますので、
-契約するドメインサービスで入力し、世界に伝播するまで待機してください。TTLは短い方が早く伝播します。
-成功すると、秘密鍵と署名証明書が手に入ります。
+実行後、表示されるTXTドメイン名とTXTレコード値をドメインサービスプロバイダーに登録し、世界中に伝播するのを待ちます。TTLを短く設定すると、伝播が速くなります。成功すると、秘密鍵と証明書が手に入ります。
 
-6. Dockerコンテナをビルドして実行します。
+6. Dockerコンテナをビルドし、実行します。
 ```bash
 sudo docker-compose up --build -d
 ```
 
-7.ブラウザにURLを打ち込んでChatを開きます。
+7.ブラウザでURLを入力し、Chatを開始します。
 ```bash
 https://<DOMAIN_NAME>
 ```
