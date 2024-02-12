@@ -78,12 +78,12 @@ RUN mkdir -p /var/www/html/auth && \
     echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
 # Certbotの自動更新設定
-RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
+RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful' --dry-run" >> /etc/crontab
 
 # 初期設定用のスクリプトを作成し、実行権限を付与
 RUN echo '#!/bin/bash'"\n"\
 '# Certbotの設定'"\n"\
-'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect'"\n"\
+'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect --staging'"\n"\
 '# cronデーモンの起動'"\n"\
 'cron'"\n"\
 '# Apacheが既に実行中かどうかを確認'"\n"\
