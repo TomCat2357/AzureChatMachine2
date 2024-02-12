@@ -101,4 +101,9 @@ sudo bash dns_challenge_20240212.sh
 6. Dockerコンテナをビルドして実行します。
 ```bash
 sudo docker-compose up --build -d
-``` 
+```
+
+7.ブラウザにURLを打ち込んでChatを開きます。
+```bash
+https://<DOMAIN_NAME>
+```
