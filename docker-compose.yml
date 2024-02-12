@@ -37,7 +37,6 @@ services:
       - LATE_LIMIT=${LATE_LIMIT}
       - AVAILABLE_MODELS=${AVAILABLE_MODELS}
       - DOMAIN_NAME=${DOMAIN_NAME}
-      
     ports:
       - "8501:8501"
     expose:
