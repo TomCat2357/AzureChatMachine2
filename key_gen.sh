@@ -16,7 +16,7 @@ openssl x509 -req -days 365 \
     -in ./docker/apache_docker/keys/my_cert.csr \
     -out ./docker/apache_docker/keys/my_cert.crt  \
     -extensions v3_req \
-    -extfile ./docker/apache_docker/apache_san.txt
+    -extfile ./apache_san.txt
 
 # CSRファイルを削除
 rm ./docker/apache_docker/keys/my_cert.csr
