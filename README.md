@@ -6,7 +6,6 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ## 特徴
 - Apache, Streamlit, Redisそれぞれをコンテナ化し、組み合わせたアプリケーション構成
 - Azure Entra IDによる認証
-- 安全な通信のためのSSL証明書生成スクリプト
 - 初期セットアップを簡単にするスクリプト
 - certbotによるLet'sEncrypt証明書更新（自動）
 
@@ -20,7 +19,7 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 
 ## 必要な準備
  - **DomainName**: パブリックIPアドレスに紐づいたドメイン名（例 www.hogehoge.com)
- - **AzureEntraID**: 認証用にアプリケーションを登録し、またユーザー登録も必要
+ - **AzureEntraID**: 認証用。ユーザー登録及びアプリ登録（TENANT_ID,CLIENT_ID,CLIENT_SECRETをメモする）
 
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーをホストするコンテナ
