@@ -35,7 +35,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 
 sudo service docker start
 
 # .env_exampleファイルを.envにコピーする
-find ./docker -name ".env_example" | while read filename; do
+find . -name ".env_example" | while read filename; do
   target="${filename%_example}"
   echo "発見されたファイル: $filename"
   echo "$target に自動的にコピーします。"
