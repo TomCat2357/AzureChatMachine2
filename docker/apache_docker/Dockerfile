@@ -9,12 +9,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt install -y \
     certbot python3-certbot-apache  \
     && rm -rf /var/lib/apt/lists/*
 
-# ダミーのカギを作る
-# 秘密鍵と証明書のコピーと権限設定
-COPY ./keys/my_cert.crt /etc/ssl/certs/my_cert.crt
-COPY ./keys/my_key.key /etc/ssl/private/my_key.key
-RUN chmod 600 /etc/ssl/private/my_key.key && \
-    chmod 666 /etc/ssl/certs/my_cert.crt
 
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
@@ -35,8 +29,8 @@ RUN { \
       echo "    ServerName ${DOMAIN_NAME}"; \
       echo '    SSLEngine on'; \
       echo '    Alias /auth /var/www/html/auth'; \
-      echo '    SSLCertificateFile /etc/ssl/certs/my_cert.crt'; \
-      echo '    SSLCertificateKeyFile /etc/ssl/private/my_key.key'; \
+      echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"; \
+      echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"; \
       echo '    ProxyPreserveHost On'; \
       echo '    RewriteEngine On'; \
       echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
@@ -47,6 +41,7 @@ RUN { \
       echo '</VirtualHost>'; \
       echo '</IfModule>'; \
     } > /etc/apache2/sites-available/000-default.conf
+
 
 # ServerName DOMAIN_NAMEの追記
 RUN { \
