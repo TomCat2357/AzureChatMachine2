@@ -38,9 +38,9 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 
 ## その他
 - **init_setup_20231223.sh**: 最初にDocker関連のパッケージをインストールするスクリプト。
-- **key_gen.sh**: SSL証明書とキーを生成するスクリプト。init_setup_20231223.shを最初だけ動かす
+- **key_gen.sh**: SSL証明書とキーを生成するスクリプト。直接実行する必要はない。init_setup_20231223.shにより実行される。
 - **docker/data/redis_6379/dump.rdb**: redisサーバーのスナップショット
-- **docker/data/streamlit_docker/.env**: API利用頻度の限界や使用モデル及び限界トークン数を設定できる。
+- **.env**: API利用頻度の限界や使用モデル及び限界トークン数の設定の他、ドメイン名やAzureEntraIDで取得したTENANT_ID等を設定する。
 
 ## セットアップ方法
 1. このリポジトリをクローンします
