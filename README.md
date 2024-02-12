@@ -53,17 +53,17 @@ git clone https://github.com/tomo2357/AzureChatMachine2.git
 cd AzureChatMachine2
 ```
 
-3. `init_setup_20231223.sh`を実行して、必要なDocker関連のパッケージをインストールします。また、秘密鍵やlogout時のテナントID、クライアントID等を入力する.env_secretファイルも作成されます。
+3. `init_setup_20231223.sh`を実行して、必要なDocker関連のパッケージをインストールします。また、秘密鍵やlogout時のテナントID、クライアントID等を入力する.envファイルも作成されます。
 ```bash
 sudo bash ./init_setup_20231223.sh
 ```
 
-4.`.env_secret`を編集して、必要な情報を入力してください。
+4.`.env`を編集して、必要な情報を入力してください。
 ```bash
-sudo vim docker/apache_docker/.env_secret
+sudo vim .env
 ```
 
-```.env_secretの中身
+```.envの中身
 # これは各種設定、秘密鍵や固有のID等を保存するためのファイルです。
 # ".env"にファイル名を変更し、内容も正しいものに書き換えてください。
 
