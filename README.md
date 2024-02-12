@@ -1,4 +1,4 @@
-# AzureChatMachine2に関するReadMe
+# chatroboに関するReadMe
 
 ## 概要
 OPENAIのAPIを用いて、GPTとチャットするためのプロジェクトです。Dockerを使用してApacheサーバー、Streamlitアプリケーション、およびRedisデータベースを組み合わせて、ウェブアプリケーション基盤を構築します。認証にはAzure Entra IDを使用
@@ -33,13 +33,13 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 - **docker/redis_conf/6379/redis.conf**: Redis設定ファイル
 
 ## サービス構成
-- **apache**: Apacheサーバーを実行し、ポート443と80を公開。それぞれHOSTのポート443と80に接続しています。
-- **streamlit**: Streamlitアプリケーションを実行し、ポート8501を公開
+- **apache**: Apacheサーバーを実行し、HOSTのポート443と80に接続しています。HOSTの443と80ポートへの接続については、streamlitに転送されます。
+- **streamlit**: Streamlitアプリケーションを実行し、ポート8501を公開。プロンプト等のデータの保存にはredis_6379コンテナを利用しています。
 - **redis_6379**: Redisデータベースを実行し、ポート6379を公開
 
 ## その他
 - **init_setup_20231223.sh**: 最初にDocker関連のパッケージをインストールするスクリプト。
-- **key_gen.sh**: SSL証明書とキーを生成するスクリプト。基本的に使わない
+- **key_gen.sh**: SSL証明書とキーを生成するスクリプト。init_setup_20231223.shを最初だけ動かす
 - **docker/data/redis_6379/dump.rdb**: redisサーバーのスナップショット
 - **docker/data/streamlit_docker/.env**: API利用頻度の限界や使用モデル及び限界トークン数を設定できる。
 
