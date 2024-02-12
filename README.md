@@ -97,6 +97,9 @@ AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 ```bash
 sudo bash dns_challenge_20240212.sh
 ```
+実行後、TXTドメイン名（例_acme-challenge.xxx.net）とTXTレコードに入力する値（例 a1BCDf2GH3IJ4KL5MN6oPQ7s8U9VWxYzAbCdEfGhIjK）を示されますので、
+契約するドメインサービスで入力し、世界に伝播するまで待機してください。TTLは短い方が早く伝播します。
+成功すると、秘密鍵と署名証明書が手に入ります。
 
 6. Dockerコンテナをビルドして実行します。
 ```bash
