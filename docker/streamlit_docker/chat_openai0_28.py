@@ -226,7 +226,7 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     headers = {"Oidc_claim_exp" : 0}
-    logout(0)
+    #logout(0)
 
 
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
@@ -296,10 +296,9 @@ st.title(MY_NAME + "さんとのチャット")
 
 
 # 定数定義
-# 環境変数からLOCALHOSTを取得
-# os.environ['LOCALHOST']
-LOCALHOST = "localhost"
-LOGOUT_URL = f"https://{LOCALHOST}/logout"
+# 環境変数からDOMAIN_NAMEを取得
+DOMAIN_NAME = os.environ.get('DOMAIN_NAME', 'localhost')
+LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
 # st.sidprompt_idebar.markdown(f"[ログアウト]({LOGOUT_URL})", unsafe_allow_html=True)
 
 

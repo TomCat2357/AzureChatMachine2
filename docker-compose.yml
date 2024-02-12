@@ -36,6 +36,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LATE_LIMIT=${LATE_LIMIT}
       - AVAILABLE_MODELS=${AVAILABLE_MODELS}
+    ports:
+      - "8501:8501"
     expose:
       - "8501"
     command: sh -c "streamlit run chat_openai0_28.py"
