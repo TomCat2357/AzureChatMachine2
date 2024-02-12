@@ -45,12 +45,12 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ## セットアップ方法
 1. このリポジトリをクローンします
 ```bash
-git clone https://github.com/tomo2357/AzureChatMachine2.git
+git clone https://github.com/TomCat2357/chatrobo.git
 ```
 
 2. リポジトリ内に移動します。
 ```bash
-cd AzureChatMachine2
+cd chatrobo
 ```
 
 3. `init_setup_20231223.sh`を実行して、必要なDocker関連のパッケージをインストールします。また、秘密鍵やlogout時のテナントID、クライアントID等を入力する.envファイルも作成されます。
