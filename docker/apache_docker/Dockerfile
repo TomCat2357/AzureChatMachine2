@@ -77,10 +77,6 @@ RUN { \
 RUN mkdir -p /var/www/html/auth && \
     echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
-
-# 80番ポートと443番ポートを公開
-EXPOSE 80 443
-
 # Certbotの自動更新設定
 RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful' --dry-run" >> /etc/crontab
 

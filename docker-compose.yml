@@ -8,9 +8,6 @@ services:
       # build時に使う
       args:
         DOMAIN_NAME: ${DOMAIN_NAME} 
-    expose :
-      - "443"
-      - "80"
     ports : 
       - "443:443"
       - "80:80"
