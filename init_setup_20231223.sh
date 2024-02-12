@@ -50,7 +50,7 @@ done
 
 
 # .env_secret_exampleファイルが見つかった場合の説明
-if find ./docker -name ".env_example" -exec false {} +; then
+if find . -name ".env_example" -exec false {} +; then
     echo ""
 else
     echo ".envファイルは、設定の他、秘密鍵やAPIキーなどの環境依存の秘密情報を含むテンプレートです。"
