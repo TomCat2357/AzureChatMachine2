@@ -64,15 +64,34 @@ sudo vim docker/apache_docker/.env_secret
 ```
 
 ```.env_secretの中身
-# .env_secret
-# これは秘密鍵や固有のID等を保存するためのファイルです。
-# ".env_secret"にファイル名を変更し、内容も正しいものに書き換えてください。
-EMAIL=LetsEncryptから連絡するためのあなたのメールアドレス 例　abc.edf@gmail.com
-DOMAINNAME=あなたのドメイン名　例 www.hogehoge.com
-TENANT_ID=Azureでアプリを登録したテナントID
-CLIENT_ID=Azureでアプリを登録したクライアントID
-CLIENT_SECRET=Azureでアプリを登録したクライアントのシークレット
-PASSPHRASE=Apache2で暗号化だかなんだかに使うパスフレーズ
+# これは各種設定、秘密鍵や固有のID等を保存するためのファイルです。
+# ".env"にファイル名を変更し、内容も正しいものに書き換えてください。
+
+### 秘密情報
+## apache2
+#LetsEncryptから連絡するためのあなたのメールアドレス
+EMAIL=hogehoge@gmail.com
+#あなたのドメイン名
+DOMAIN_NAME=www.hogehoge.com
+#Azureでアプリを登録したテナントID
+TENANT_ID=**********************************
+#Azureでアプリを登録したクライアントID
+CLIENT_ID=**********************************
+#Azureでアプリを登録したクライアントのシークレット
+CLIENT_SECRET=**********************************
+#Apache2で暗号化だかなんだかに使うパスフレーズ
+PASSPHRASE=**********************************
+
+## streamlit
+# OPENAIのAPIキー
+OPENAI_API_KEY=**********************************
+
+### 設定
+## streamlit
+# GPTへのアクセス回数の上限。PERIOD秒にCOUNT回を超えるアクセスがあれば、ビジーエラーが出る。
+LATE_LIMIT={"COUNT":1, "PERIOD":1}
+# 使用可能なモデルと限界のトークン数。{"モデル名" : 限界トークン数}となっている。
+AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 ```
 
 5. Dockerコンテナをビルドして実行します。
