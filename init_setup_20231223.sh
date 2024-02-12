@@ -34,8 +34,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin 
 # Dockerサービスを開始
 sudo service docker start
 
-#!/bin/bash
-
+# .env_exampleファイルを.envにコピーする
 find ./docker -name ".env_example" | while read filename; do
   target="${filename%_example}"
   echo "発見されたファイル: $filename"
