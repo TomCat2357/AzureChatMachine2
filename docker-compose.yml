@@ -1,42 +1,13 @@
 version: '3.2'
 services:
-  streamlit:
-    container_name: 'streamlit'
-    build: 
-      context: ./docker/streamlit_docker/.
-      dockerfile: Dockerfile
-    
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}  # コンテナ実行時に使用
-      - LATE_LIMIT=${LATE_LIMIT}
-      - AVAILABLE_MODELS=${AVAILABLE_MODELS}
-      - 'TZ=Asia/Tokyo'
-    ports : 
-      - "8501:8501"
-    
-    expose:
-      - "8501"
-    #command: sh -c "tail -f /dev/null"
-    command: sh -c "streamlit run chat_openai0_28.py"
-    depends_on:
-      - apache
-      - redis_6379
-    volumes:
-      - ./log:/root/log/
-      - ./data/streamlit_data:/root/data/ 
-      - ./docker/streamlit_docker:/root/docker/
-    restart: always
-    working_dir: '/root/docker/'
-  
   apache:
     container_name: 'apache'
     build: 
       context: ./docker/apache_docker/.
       dockerfile: Dockerfile
+      # build時に使う
       args:
-        DOMAIN_NAME: ${DOMAIN_NAME}
-    env_file:
-      - .env
+        DOMAIN_NAME: ${DOMAIN_NAME} 
     expose :
       - "443"
       - "80"
@@ -44,22 +15,51 @@ services:
       - "443:443"
       - "80:80"
     volumes:
-      - ./data/apache_data:/root/data/ 
-      - ./host/log/directory:/var/log/apache2
-      #- ./docker/apache_docker:/root/docker/
-      #- ./docker/apache_docker/keys:/etc/ssl/origin_keys
+      - ./data/apache_log:/var/log/apache2 # apache2のlog保存用
+      - ./data/apache_letsencrypt:/etc/letsencrypt # letsencryptの証明書保存用
+    # コンテナ実行時に使用
+    environment:
+      - 'TZ=Asia/Tokyo'
+      - EMAIL=${EMAIL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - TENANT_ID=${TENANT_ID}
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - PASSPHRASE=${PASSPHRASE}
+    
     restart: always
+  streamlit:
+    container_name: 'streamlit'
+    build: 
+      context: ./docker/streamlit_docker/.
+      dockerfile: Dockerfile
+    # コンテナ実行時に使用
+    environment:
+      - 'TZ=Asia/Tokyo'
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LATE_LIMIT=${LATE_LIMIT}
+      - AVAILABLE_MODELS=${AVAILABLE_MODELS}
+    expose:
+      - "8501"
+    command: sh -c "streamlit run chat_openai0_28.py"
+    depends_on:
+      - apache
+      - redis_6379
+    volumes:
+      - ./data/streamlit_log:/root/log/  # log保存用
+      - ./docker/streamlit_docker:/root/docker/ # chat_openai0_28.pyアクセス用
+    restart: always
+    working_dir: '/root/docker/'
+  
 
   redis_6379:
     container_name: 'redis_6379'
     image: redis:latest
-    ports:
-      - "6379:6379"
     expose:
       - "6379"
     volumes:
-      - ./data/redis_6379_snapshot/:/data/ # wsl2用
-      - ./docker/redis_conf/6379/:/usr/local/etc/redis/
+      - ./data/redis_6379_snapshot/:/data/ # snapshot保存用
+      - ./docker/redis_conf/6379/:/usr/local/etc/redis/ # redis設定用
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     restart: always
 
