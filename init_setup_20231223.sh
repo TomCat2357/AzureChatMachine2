@@ -28,21 +28,22 @@ sudo service docker start
 
 # .env_exampleファイルを.envにコピーする
 find . -name ".env_example" | while read filename; do
-  target="${filename%_example}"
-  echo "発見されたファイル: $filename"
-  echo "$target に自動的にコピーします。"
-  cp -i "$filename" "$target"
-  if [[ $? -eq 0 ]]; then
+  target="${filename%_example}" # .envファイルの名前を設定
+  # 同一ディレクトリに.envファイルが存在するか確認
+  if [[ ! -f "$target" ]]; then
+    # .envファイルが存在しない場合、.env_exampleを.envにコピー
+    cp "$filename" "$target"
     echo "$filename を $target にコピーしました。"
   else
-    echo "$filename のコピーはキャンセルされました。"
+    # .envファイルが既に存在する場合
+    echo "$target は既に存在するため、コピーは行いませんでした。"
   fi
 done
 
 
 
-# .env_secret_exampleファイルが見つかった場合の説明
-if find . -name ".env_example" -exec false {} +; then
+# .envファイルが見つかった場合の説明
+if find . -name ".env" -exec false {} +; then
     echo ""
 else
     echo ".envファイルは、設定の他、秘密鍵やAPIキーなどの環境依存の秘密情報を含むテンプレートです。"

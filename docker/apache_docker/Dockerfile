@@ -94,3 +94,4 @@ RUN echo '#!/bin/bash'"\n"\
 
 # コンテナ起動時にinit.shスクリプトを実行
 CMD ["/bin/bash", "-c", "/init-setup.sh"]
+#CMD ["tail", "-f", "/dev/null"]

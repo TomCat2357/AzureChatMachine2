@@ -4,7 +4,6 @@ data/apache_data/*
 !data/apache_data/.gitkeep
 data/streamlit_data/*
 !data/streamlit_data/.gitkeep
-.env_secret
 .env
 *.log
 *.log.*
@@ -16,4 +15,6 @@ data/streamlit_data/*
 *.pkl
 *test*.*
 Interactive*.*
-.gitignore
+# apache_letsencryptディレクトリ自体は保持するが、中身は無視する
+*/apache_letsencrypt/*
+*/!apache_letsencrypt/.gitkeep
