@@ -5,11 +5,12 @@ from streamlit.web.server.websocket_headers import _get_websocket_headers
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
-from typing import Any, List, Generator, Iterable
+from typing import Set, Any, List, Generator, Iterable, Dict
 import openai, os, redis, time, json, tiktoken, datetime
 import numpy as np
 from copy import copy
 from concurrent.futures import ThreadPoolExecutor
+
 
 hide_deploy_button_style = """
 <style>
@@ -19,7 +20,7 @@ hide_deploy_button_style = """
 st.markdown(hide_deploy_button_style, unsafe_allow_html=True)
 
 def trim_tokens(
-    messages: List[dict], max_tokens: int, model_name: str = "gpt-3.5-turbo-0301"
+    messages: List[dict], max_tokens: int, model: str = "gpt-3.5-turbo-0301"
 ) -> List[dict]:
     """
     メッセージのトークン数が指定した最大トークン数を超える場合、
@@ -28,7 +29,7 @@ def trim_tokens(
     引数:
         messages (List[dict]): メッセージのリスト。
         max_tokens (int): 最大トークン数。
-        model_name (str): モデル名（デフォルトは'gpt-3.5-turbo-0301'）。
+        model (str): モデル名（デフォルトは'gpt-3.5-turbo-0301'）。
 
     戻り値:
         List[dict]: トークン数が最大トークン数以下になったメッセージのリスト。
@@ -36,7 +37,7 @@ def trim_tokens(
     # 無限ループを開始
     while True:
         # 現在のメッセージのトークン数を計算
-        total_tokens = calc_token_tiktoken(str(messages), model_name=model_name)
+        total_tokens = calc_token_tiktoken(str(messages), model=model)
         # トークン数が最大トークン数以下になった場合、ループを終了
         if total_tokens <= max_tokens:
             break
@@ -48,14 +49,14 @@ def trim_tokens(
 
 
 def response_chatgpt(
-    prompt: List[dict], model_name: str = "gpt-3.5-turbo", stream: bool = True
+    prompt: List[dict], model: str = "gpt-3.5-turbo", stream: bool = True
 ) -> Generator:
     """
     ChatGPTからのレスポンスを取得します。
 
     引数:
         prompt (List[dict]): 過去のメッセージとユーザーのメッセージが入ったリストユーザーからのメッセージ。
-        model_name (str): 使用するChatGPTのモデル名。デフォルトは"gpt-3.5-turbo"。
+        model (str): 使用するChatGPTのモデル名。デフォルトは"gpt-3.5-turbo"。
 
     戻り値:
         response: ChatGPTからのレスポンス。
@@ -70,11 +71,11 @@ def response_chatgpt(
     logger.debug(f"trim_tokens後のpromptのトークン数: {calc_token_tiktoken(str(prompt))}")
     try:
         logger.info(
-            f"Sending request to OpenAI API with prompt: {prompt}, model_name : {model_name}"
+            f"Sending request to OpenAI API with prompt: {prompt}, model : {model}"
         )
 
         response = openai.ChatCompletion.create(
-            model=model_name,
+            model=model,
             messages=prompt,
             stream=stream,
         )
@@ -86,16 +87,16 @@ def response_chatgpt(
 
 
 def calc_token_tiktoken(
-    chat: str, encoding_name: str = "", model_name: str = "gpt-3.5-turbo-0301"
+    chat: str, encoding_name: str = "", model: str = "gpt-3.5-turbo-0301"
 ) -> int:
     """
     # 引数の説明:
     # chat: トーク��数を計算するテキスト。このテキストがAIモデルによってどのようにエンコードされるかを分析します。
 
     # encoding_name: 使用するエンコーディングの名前。この引数を指定すると、そのエンコーディングが使用されます。
-    # 例えば 'utf-8' や 'ascii' などのエンコーディング名を指定できます。指定しない場合は、model_nameに基づいてエンコーディングが選ばれます。
+    # 例えば 'utf-8' や 'ascii' などのエンコーディング名を指定できます。指定しない場合は、modelに基づいてエンコーディングが選ばれます。
 
-    # model_name: 使用するAIモデルの名前。この引数は、特定のAIモデルに対応するエンコーディングを自動で選択するために使用されます。
+    # model: 使用するAIモデルの名前。この引数は、特定のAIモデルに対応するエンコーディングを自動で選択するために使用されます。
     # 例えば 'gpt-3.5-turbo-0301' というモデル名を指定すれば、そのモデルに適したエンコーディングが選ばれます。
     # encoding_nameが指定されていない場合のみ、この引数が使用されます。
     """
@@ -104,12 +105,12 @@ def calc_token_tiktoken(
     if encoding_name:
         # encoding_nameが指定されていれば、その名前でエンコーディングを取得する
         encoding = tiktoken.get_encoding(encoding_name)
-    elif model_name:
-        # model_nameが指定されていれば、そのモデルに対応するエンコーディングを取得する
-        encoding = tiktoken.get_encoding(tiktoken.encoding_for_model(model_name).name)
+    elif model:
+        # modelが指定されていれば、そのモデルに対応するエンコーディングを取得する
+        encoding = tiktoken.get_encoding(tiktoken.encoding_for_model(model).name)
     else:
         # 両方とも指定されていない場合はエラーを投げる
-        raise ValueError("Both encoding_name and model_name are missing.")
+        raise ValueError("Both encoding_name and model are missing.")
 
     # テキストをトークンに変換し、その数を数える
     num_tokens = len(encoding.encode(chat))
@@ -208,8 +209,85 @@ def logout(login_time=0):
     time.sleep(10)
     st.rerun()
 
-# import pickle
+def redisCliTitleAtUserRecord(prompt: List[Dict[str, str]], timestamp: int, model: str, session_id: str, prompt_id: str, user_id: str) -> None:
+    """
+    過去のチャットをRedisに記録します。
+
+    Args:
+        prompt (List[Dict[str, str]]):   チャットのプロンプトのリスト。
+        timestamp (int):   チャットのタイムスタンプ。
+        model (str):   チャットに使用されるモデルの名前。
+        session_id (str):   チャットのセッションID。
+        prompt_id (str):   プロンプトのID。
+        user_id (str):   ユーザーのID。
+    """
+    # Redisにチャットの記録がすでに存在するかチェック
+    if not redisCliTitleAtUser.hexists(user_id, session_id):
+        #   タイトルを生成するためのプロンプトを作成
+        prompt_for_title = copy(prompt[:1])
+        add_prompt = (
+            "以下のユーザーメッセージから適切なタイトルを生成してください。"
+            "メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。"
+            "メッセージ: "
+        )
+        add_prompt_token_num = calc_token_tiktoken(add_prompt)
+        count =   0
+        #   タイトルの生成を試みるループ
+        while True:
+            #   入力トークン数が最大トークン数を超えないかチェック
+            if (
+                INPUT_MAX_TOKENS
+                >= calc_token_tiktoken(str(prompt_for_title))
+                + add_prompt_token_num
+            ):
+                break
+            #   カウンタをインクリメント
+            count += 1
+            #   カウンタが100を超えたら終了
+            if count >   100:
+                return
+            #   プロンプトの内容を1文字削除
+            prompt_for_title[0]["content"] = prompt_for_title[0]["content"][:-1]
+        #   プロンプトに追加のプロンプトを追加
+        prompt_for_title[0]["content"] = add_prompt + prompt_for_title[0]["content"]
+        # ChatGPTからタイトルのレスポンスを取得
+        response, prompt_for_title = response_chatgpt(
+            prompt_for_title,
+            model="gpt-3.5-turbo",
+            stream=False,
+        )
+
+        #   タイトルの送信に使用したトークン数を記録
+        redisCliChatData.hset(
+            f'sendForTitle_{model}',
+            prompt_id,
+            calc_token_tiktoken(prompt_for_title)
+        )
+        #   レスポンスからタイトルを抽出
+        title = response["choices"][0]["message"].get("content", "")
+        logger.info(f"タイトルのレスポンス: {title}")
+        #   タイトルの受け入れに使用したトークン数を記録
+        redisCliChatData.hset(
+            f'acceptForTitle_{model}',
+            prompt_id,
+            calc_token_tiktoken(title)
+        )
+    else:
+        #   チャットの記録が存在する場合、タイトルを取得
+        title = redisCliTitleAtUser.hget(user_id, session_id).decode()
+    #   チャットをRedisに記録
+    redisCliTitleAtUser.hset(
+        user_id,
+        session_id,
+        title,
+    )
+
+# 定数定義
+# 環境変数からDOMAIN_NAMEを取得
+DOMAIN_NAME = os.environ.get('DOMAIN_NAME', 'localhost')
+
 headers = _get_websocket_headers()
+
 
 
 #"""
@@ -225,9 +303,10 @@ except Exception as e:
     st.warning(e)
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
-    headers = {"Oidc_claim_exp" : 0}
+    headers = {"Oidc_claim_exp" : int(time.time())}
     #logout(0)
 
+LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
 
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
@@ -238,12 +317,24 @@ else:
 
 executor1 = ThreadPoolExecutor(1)
 
+# USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
+# session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
+# prompt_id : sessionのうち、そのchat数で管理されているID。session_idとそのchat数で構成。f"{session_id}_{chat数:0>6}"
+
+# redisCliPrompt : session_idでchat_messageを管理する。構造 {session_id : [{"role": "user", "content": user_msg},{"role": "assistant", "content": assistant_msg} ,...]}
 redisCliPrompt = redis.Redis(host="redis_6379", port=6379, db=0)
+# redisCliUserSetting : USER_IDでmodelを管理する。構造{USER_ID : model}
 redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
-redisCliPastChat = redis.Redis(host="redis_6379", port=6379, db=2)
+# redisCliTitleAtUser : USER_IDとsession_idでタイトルを管理する。構造{USER_ID : {session_id, timestamp}}
+redisCliTitleAtUser = redis.Redis(host="redis_6379", port=6379, db=2)
+# redisCliAccessTime : prompt_idとscoreとしてunixtimeを管理。構造{'access' : {prompt_id : unixtime(as score)}}
 redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
+# redisCliLoginTime : USER_IDとlogin_timeを管理する。ログイン済みだとTrue、ログアウト済みだとFalse。構造{USER_ID : {login_time : status(True or False)}}
 redisCliLoginTime = redis.Redis(host="redis_6379", port=6379, db=4)
-redisCliNumPrompt = redis.Redis(host="redis_6379", port=6379, db=5)
+# redisCliChatData : kind（送信、受信、タイトル送信、タイトル送信）とprompt_idでトークン数を管理。構造{kind: {prompt_id : token_count(int)}}
+redisCliChatData = redis.Redis(host="redis_6379", port=6379, db=5)
+
+
 
 
 login_time = (int(headers["Oidc_claim_exp"]) - 3600) * 10**9
@@ -278,7 +369,7 @@ LATE_LIMIT_PERIOD: float = LATE_LIMIT["PERIOD"]
 # Streamlitアプリの開始時にセッション状態を初期化
 if "id" not in st.session_state:
     logger.debug("session initialized")
-    st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
+    st.session_state['id'] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
     # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
     if not redisCliUserSetting.hexists(USER_ID, "model"):
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
@@ -290,16 +381,11 @@ if "id" not in st.session_state:
 # 過去の最大トークン数
 # INPUT_MAX_TOKENS = 20
 
-logger.debug(f"session_id first : {st.session_state.id}")
+logger.debug(f"session_id first : {st.session_state['id']}")
 
 st.title(MY_NAME + "さんとのチャット")
 
 
-# 定数定義
-# 環境変数からDOMAIN_NAMEを取得
-DOMAIN_NAME = os.environ.get('DOMAIN_NAME', 'localhost')
-LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
-# st.sidprompt_idebar.markdown(f"[ログアウト]({LOGOUT_URL})", unsafe_allow_html=True)
 
 
 if st.sidebar.button("Logout"):
@@ -326,29 +412,38 @@ INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
 # サイドバーに「New chat」ボタンを追加します。
 # ボタンがクリックされたときにアプリケーションを再実行します。
 if st.sidebar.button("🔄 **New chat**"):
-    del st.session_state["id"]
+    del st.session_state['id']
     st.rerun()
 
-# 7日分の時間を戻る
+#  7日前の日時を取得し、その日の深夜0時を表すdatetimeオブジェクトを作成
 seven_days_ago = datetime.datetime.now() - datetime.timedelta(days=7)
 seven_days_ago_midnight = seven_days_ago.replace(
     hour=0, minute=0, second=0, microsecond=0
 )
+
+#  7日前の深夜0時をUNIXタイムスタンプ（秒単位の時間）に変換
 seven_days_ago_unixtime = int(seven_days_ago_midnight.timestamp())
-session_id_with_chat_num_within_last_seven_days = redisCliAccessTime.zrangebyscore(
+
+# Redisの"access"スコアレッドにおいて、7日前のUNIXタイムスタンプよりも大きいスコアを持つpromptIDを取得
+prompt_id_with_chat_num_within_last_seven_days : List[bytes] = redisCliAccessTime.zrangebyscore(
     "access", seven_days_ago_unixtime, "+inf"
 )
-session_id_within_last_seven_days = {
+
+#  取得したpromptIDからsessionIDを抽出し、セットに格納
+session_id_within_last_seven_days : Set[str] = {
     "_".join(id_num.decode().split("_")[:-1])
-    for id_num in session_id_with_chat_num_within_last_seven_days
+    for id_num in prompt_id_with_chat_num_within_last_seven_days
 }
-user_chats = redisCliPastChat.hgetall(USER_ID)
-user_chats_within_last_seven_days: dict = {
-    session_id.decode(): json.loads(chat_data)
-    for session_id, chat_data in user_chats.items()
+
+#  USER_IDについての、7日以内のsession_idとtitleを抽出し、辞書に格納
+user_chats_within_last_seven_days : Dict[str, str] = {
+    session_id.decode(): title.decode()
+    for session_id, title \
+        in redisCliTitleAtUser.hgetall(USER_ID).items()
     if session_id.decode() in session_id_within_last_seven_days
 }
 
+#  7日以内のチャットデータをタイムスタンプの降順でソート
 user_chats_within_last_seven_days_sorted: list[tuple] = sorted(
     user_chats_within_last_seven_days.items(), reverse=True
 )
@@ -357,15 +452,13 @@ st.sidebar.markdown(
     "<p style='font-size:20px; color:#FFFF00;'>過去のチャット</p>", unsafe_allow_html=True
 )
 
-for session_id, info in user_chats_within_last_seven_days_sorted:
-    # print(info)
-    title = info["title"]
+for session_id, title in user_chats_within_last_seven_days_sorted:
     if len(title) > 15:
         title = title[:15] + "..."
     if st.sidebar.button(title):
-        # ボタンがクリックされた場合、session_idをst.session_state.idに代入
-        st.session_state["id"] = session_id
-        # logger.debug(f'sessin id button : {st.session_state.id} clicked')
+        # ボタンがクリックされた場合、session_idをst.session_state['id']に代入
+        st.session_state['id'] = session_id
+        # logger.debug(f'sessin id button : {st.session_state['id']} clicked')
         # 画面をリフレッシュ
         st.rerun()
 
@@ -379,7 +472,7 @@ with st.chat_message("assistant"):
 ##        st.write(f'key : {key}, value : {value}')
 
 # 以前のチャットログを表示
-for chat in redisCliPrompt.lrange(st.session_state.id, 0, -1):
+for chat in redisCliPrompt.lrange(st.session_state['id'], 0, -1):
     chat = json.loads(chat)
     with st.chat_message(chat["role"]):
         st.write(chat["content"])
@@ -389,15 +482,16 @@ user_msg: str = st.chat_input("ここにメッセージを入力")
 
 # 処理開始
 if user_msg:
-    # logger.debug(f'session_id second : {st.session_state.id}')
+    # logger.debug(f'session_id second : {st.session_state['id']}')
 
     # 最新のメッセージを表示
     with st.chat_message("user"):
         st.write(user_msg)
     new_prompt: dict = {"role": "user", "content": user_msg}
-    redisCliPrompt.rpush(st.session_state.id, json.dumps(new_prompt))
+    redisCliPrompt.rpush(st.session_state['id'], json.dumps(new_prompt))
     error_flag = False
     try:
+        now = time.time()
         # 入力メッセージのトークン数を計算
         user_msg_tokens: int = calc_token_tiktoken(str([new_prompt]))
         logger.debug(f"入力メッセージのトークン数: {user_msg_tokens}")
@@ -414,22 +508,22 @@ if user_msg:
             raise Exception("アクセス数が多いため、接続できません。しばらくお待ちください。")
         prompt = [
             json.loads(prompt)
-            for prompt in redisCliPrompt.lrange(st.session_state.id, 0, -1)
+            for prompt in redisCliPrompt.lrange(st.session_state['id'], 0, -1)
         ]
         response, prompt = response_chatgpt(
             prompt,
-            model_name=model,
+            model=model,
             stream=True,
         )
     except Exception as e:
         error_flag = True
         st.warning(e)
         # エラーが出たので今回のユーザーメッセージを削除する
-        redisCliPrompt.rpop(st.session_state.id, 1)
+        redisCliPrompt.rpop(st.session_state['id'], 1)
     if not error_flag:
-        now = time.time()
         
-        prompt_id = f"{st.session_state.id}_{redisCliPrompt.llen(st.session_state.id):0>6}"
+        
+        prompt_id = f"{st.session_state['id']}_{redisCliPrompt.llen(st.session_state['id']):0>6}"
         
         redisCliAccessTime.zadd(
             "access",
@@ -437,77 +531,29 @@ if user_msg:
                 prompt_id: now
             },
         )
-        redisCliNumPrompt.hset(
+        redisCliChatData.hset(
             f'send_{model}',
             prompt_id,
             calc_token_tiktoken(prompt)
         )
 
-        def redisCliPastChatRecord(prompt, timestamp, model, session_id, prompt_id,user_id):
-            # logger.debug('redisCliPastChatRecord start')
-            if not redisCliPastChat.hexists(user_id, session_id):
-                prompt_for_title = copy(prompt[:1])
-                add_prompt = "以下のユーザーメッセージから適切なタイトルを生成してください。メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。メッセージ: "
-                add_prompt_token_num = calc_token_tiktoken(add_prompt)
-                count = 0
-                while True:
-                    if (
-                        INPUT_MAX_TOKENS
-                        >= calc_token_tiktoken(str(prompt_for_title))
-                        + add_prompt_token_num
-                    ):
-                        break
-                    count += 1
-                    if count > 100:
-                        return
-                    prompt_for_title[0]["content"] = prompt_for_title[0]["content"][:-1]
-                prompt_for_title[0]["content"] = add_prompt + prompt_for_title[0]["content"]
-                # logger.debug(f'prompt_for_title : {prompt_for_title}')
-                response, prompt_for_title = response_chatgpt(
-                    prompt_for_title,
-                    model_name="gpt-3.5-turbo",
-                    stream=False,
-                )
-                
-                redisCliNumPrompt.hset(
-                    f'sendForTitle_{model}',
-                    prompt_id,
-                    calc_token_tiktoken(prompt_for_title)
-                    )
-                title = response["choices"][0]["message"].get("content", "")
-                logger.info(f"Response for title : {title}")
-                redisCliNumPrompt.hset(
-                    f'acceptForTitle_{model}',
-                    prompt_id,
-                    calc_token_tiktoken(title)
-                    )
-                
-                # logger.debug(f"title : {title}")
-            else:
-                title = json.loads(redisCliPastChat.hget(user_id, session_id))["title"]
-            redisCliPastChat.hset(
-                user_id,
-                session_id,
-                json.dumps({"timestamp": timestamp, "model": model, "title": title}),
-            )
-            # except Exception:
-            #    traceback.print_exc()
 
-        # logger.debug('redisCliPastChatRecord submit')
+
+        # logger.debug('redisCliTitleAtUserRecord submit')
 
         executor1.submit(
-            redisCliPastChatRecord,
+            redisCliTitleAtUserRecord,
             prompt,
             now,
             model,
-            st.session_state.id,
+            st.session_state['id'],
             prompt_id, 
             USER_ID,
         )
 
         assistant_prompt = {"role": "assistant", "content": ""}
-        redisCliPrompt.rpush(st.session_state.id, json.dumps(assistant_prompt))
-        prompt_length = redisCliPrompt.llen(st.session_state.id)
+        redisCliPrompt.rpush(st.session_state['id'], json.dumps(assistant_prompt))
+        prompt_length = redisCliPrompt.llen(st.session_state['id'])
 
 
         with st.chat_message("assistant"):
@@ -520,10 +566,10 @@ if user_msg:
                 assistant_msg += tmp_assistant_msg
                 assistant_prompt["content"] = assistant_msg
                 redisCliPrompt.lset(
-                    st.session_state.id, prompt_length - 1, json.dumps(assistant_prompt)
+                    st.session_state['id'], prompt_length - 1, json.dumps(assistant_prompt)
                 )
                 num_prompt = calc_token_tiktoken(assistant_msg)
-                redisCliNumPrompt.hset(
+                redisCliChatData.hset(
                     f'accept_{model}',
                     prompt_id,
                     num_prompt                    
