@@ -97,13 +97,24 @@ AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 sudo bash dns_challenge_20240212.sh
 ```
 実行後、表示されるTXTドメイン名とTXTレコード値をドメインサービスプロバイダーに登録し、世界中に伝播するのを待ちます。TTLを短く設定すると、伝播が速くなります。成功すると、秘密鍵と証明書が手に入ります。
+dns_challenge_20240212.shについて途中で実行を止めるとホストでApache2が立ち上がり、80番portを占有してDockerでのcontainer作成が失敗することがあります。
+その場合、以下のコマンドでホストのApache2を止めます。
+```bash
+sudo systemctl stop apache2
+sudo systemctl enable apache2
+```
 
-6. Dockerコンテナをビルドし、実行します。
+
+6.Let's Encryptの証明書と秘密鍵がもともとあればホストの以下の場所に保存
+証明書 : /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
+秘密鍵 : /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem
+
+7. Dockerコンテナをビルドし、実行します。
 ```bash
 sudo docker-compose up --build -d
 ```
 
-7.ブラウザでURLを入力し、Chatを開始します。
+8.ブラウザでURLを入力し、Chatを開始します。
 ```bash
 https://<DOMAIN_NAME>
 ```
