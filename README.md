@@ -18,8 +18,9 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ![Azure](https://img.shields.io/badge/Azure-007FFF?logo=microsoftazure&logoColor=white)
 
 ## 必要な準備
-- **ドメイン名**: パブリックIPアドレスに紐づけられたドメイン名 (例: www.example.com)
+- **Azureのリソース**: VNet、仮想マシン及びそのパブリックIPアドレス、OPENAI APIのPrivate Endpoint(URLとAPIキー）、Private DNS Server（VNet内の名前解決用） 
 - **Azure Entra ID**: 認証用。ユーザー登録およびアプリ登録を行い、TENANT_ID、CLIENT_ID、CLIENT_SECRETを控えておく。
+- **ドメイン名**: 仮想マシンのパブリックIPアドレスに紐づけられたドメイン名 (例: www.example.com)
 
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーを実行するコンテナ。
