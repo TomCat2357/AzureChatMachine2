@@ -42,6 +42,7 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 - **.env**: APIの利用制限、使用モデル、トークン数の限界、ドメイン名、Azure Entra IDで取得したTENANT_IDなどを設定するファイル。
 
 ## セットアップ方法
+
 1. このリポジトリをクローンします
 ```bash
 git clone https://github.com/TomCat2357/chatrobo.git
@@ -92,6 +93,7 @@ LATE_LIMIT={"COUNT":1, "PERIOD":1}
 # 使用可能なモデルと限界のトークン数。{"モデル名" : 限界トークン数}となっている。
 AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 ```
+
 5.Let's Encryptの証明書と秘密鍵をまだ持っていない場合、DNS01チャレンジを実行します。
 ```bash
 sudo bash dns_challenge_20240212.sh
@@ -103,7 +105,6 @@ dns_challenge_20240212.shについて途中で実行を止めるとホストでA
 sudo systemctl stop apache2
 sudo systemctl enable apache2
 ```
-
 
 6.Let's Encryptの証明書と秘密鍵がもともとあればホストの以下の場所に保存
 証明書 : /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
