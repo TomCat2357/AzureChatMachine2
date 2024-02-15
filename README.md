@@ -107,8 +107,10 @@ sudo systemctl enable apache2
 ```
 
 6.Let's Encryptの証明書と秘密鍵がもともとあればホストの以下の場所に保存
-証明書 : /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
-秘密鍵 : /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem
+```bash
+/etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem # 証明書
+/etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem # 秘密鍵
+```
 
 7. Dockerコンテナをビルドし、実行します。
 ```bash
