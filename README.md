@@ -18,8 +18,9 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ![Azure](https://img.shields.io/badge/Azure-007FFF?logo=microsoftazure&logoColor=white)
 
 ## 必要な準備
-- **ドメイン名**: パブリックIPアドレスに紐づけられたドメイン名 (例: www.example.com)
-- **Azure Entra ID**: 認証用。ユーザー登録およびアプリ登録を行い、TENANT_ID、CLIENT_ID、CLIENT_SECRETを控えておく。
+- **Azureのリソース**: VNet、仮想マシン及びそのパブリックIPアドレス、OPENAI APIのPrivate Endpoint(URLとAPIキー）、Private DNS Server（VNet内の名前解決用） 
+- **ドメイン名**: 仮想マシンのパブリックIPアドレスに紐づけられたドメイン名 (例: www.example.com)
+- **Azure Entra ID**: 認証用。ユーザー登録およびアプリ登録を行い（ドメイン名が必要）、TENANT_ID、CLIENT_ID、CLIENT_SECRETを控えておく。
 
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーを実行するコンテナ。
@@ -42,6 +43,9 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 - **.env**: APIの利用制限、使用モデル、トークン数の限界、ドメイン名、Azure Entra IDで取得したTENANT_IDなどを設定するファイル。
 
 ## セットアップ方法
+
+## セットアップ方法
+
 1. このリポジトリをクローンします
 ```bash
 git clone https://github.com/TomCat2357/chatrobo.git
@@ -52,17 +56,18 @@ git clone https://github.com/TomCat2357/chatrobo.git
 cd chatrobo
 ```
 
-3. init_setup_20231223.shを実行し、必要なDocker関連パッケージをインストールします。また、このステップで.envファイルが作成されます。
+3. `init_setup_20231223.sh`を実行し、必要なDocker関連パッケージをインストールします。また、このステップで`.env`ファイルが作成されます。
 ```bash
 sudo bash ./init_setup_20231223.sh
 ```
 
-4.`.env`を編集して、必要な情報を入力してください。
+4. `.env`を編集して、必要な情報を入力してください。
 ```bash
 sudo vim .env
 ```
 
-```.envの中身
+```
+.envの中身
 # これは各種設定、秘密鍵や固有のID等を保存するためのファイルです。
 # ".env"にファイル名を変更し、内容も正しいものに書き換えてください。
 
@@ -91,19 +96,27 @@ OPENAI_API_KEY=**********************************
 LATE_LIMIT={"COUNT":1, "PERIOD":1}
 # 使用可能なモデルと限界のトークン数。{"モデル名" : 限界トークン数}となっている。
 AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
+# タイトル用のモデルと限界文字数。{"モデル名" : 限界文字数}となっている。
+TITLE_MODEL={"gpt-3.5-turbo":512}
 ```
-5.Let's Encryptの証明書と秘密鍵をまだ持っていない場合、DNS01チャレンジを実行します。
+
+5. Let's Encryptの証明書と秘密鍵をまだ持っていない場合、DNS01チャレンジを実行します。
 ```bash
 sudo bash dns_challenge_20240212.sh
 ```
-実行後、表示されるTXTドメイン名とTXTレコード値をドメインサービスプロバイダーに登録し、世界中に伝播するのを待ちます。TTLを短く設定すると、伝播が速くなります。成功すると、秘密鍵と証明書が手に入ります。
 
-6. Dockerコンテナをビルドし、実行します。
+6. Let's Encryptの証明書と秘密鍵がもともとあれば、ホストの以下の場所に保存します。
+```bash
+/etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem # 証明書
+/etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem # 秘密鍵
+```
+
+7. Dockerコンテナをビルドし、実行します。
 ```bash
 sudo docker-compose up --build -d
 ```
 
-7.ブラウザでURLを入力し、Chatを開始します。
+8. ブラウザでURLを入力し、Chatを開始します。
 ```bash
 https://<DOMAIN_NAME>
 ```
