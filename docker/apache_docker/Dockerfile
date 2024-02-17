@@ -1,5 +1,5 @@
 # 基本イメージとしてUbuntuを使用
-FROM ubuntu:latest
+FROM ubuntu:22.04
 
 # 必要なパッケージのインストール
 RUN apt update && \
@@ -94,4 +94,3 @@ RUN echo '#!/bin/bash'"\n"\
 
 # コンテナ起動時にinit.shスクリプトを実行
 CMD ["/bin/bash", "-c", "/init-setup.sh"]
-#CMD ["tail", "-f", "/dev/null"]

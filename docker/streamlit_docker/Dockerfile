@@ -16,28 +16,12 @@ RUN set -x && \
 RUN apt install -y apache2 libapache2-mod-wsgi-py3
 
 # Python関連のライブラリー
-RUN apt install -y python3 python3-dev python3-pip build-essential 
+RUN apt install -y python3.10 python3-pip build-essential
 RUN pip install --upgrade pip
 
-
-# pyenvに必要なパッケージのインストール
-RUN apt update && apt install -y git curl build-essential libssl-dev zlib1g-dev \
-    libbz2-dev libreadline-dev libsqlite3-dev wget llvm libncurses5-dev \
-    libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev vim
-
-# pyenv, pyenv-virtualenvのインストール
-RUN git clone https://github.com/pyenv/pyenv.git ~/.pyenv
-RUN git clone https://github.com/pyenv/pyenv-virtualenv.git ~/.pyenv/plugins/pyenv-virtualenv
-RUN echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc && \
-    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc && \
-    echo 'eval "$(pyenv init --path)"' >> ~/.bashrc && \
-    echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-
 # Pythonバージョンの固定 (バージョンを指定)
-RUN /root/.pyenv/bin/pyenv install 3.10.13
-RUN /root/.pyenv/bin/pyenv global 3.10.13
-RUN /root/.pyenv/bin/pyenv virtualenv 3.10.13 deploy
-ENV PATH "/root/.pyenv/versions/3.10.13/envs/deploy/bin:$PATH"
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+ENV PATH="/usr/local/bin:$PATH"
 
 
 # Streamlitのインストール (ここでStreamlitをインストール)
@@ -49,6 +33,3 @@ EXPOSE 8501
 
 # 環境変数の設定 (APIキー等を外部ファイルから読み込む)
 ENV OPENAI_API_KEY=""
-
-# AzureGPTをクローン
-#RUN cd ~ && git clone https://github.com/tomo2357/AzureGPT.git
