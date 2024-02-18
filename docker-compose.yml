@@ -42,6 +42,8 @@ services:
       - TITLE_MODEL=${TITLE_MODEL}
       - DOMAIN_NAME=${DOMAIN_NAME}
       - DOWNLOAD_DATA_WORD=${DOWNLOAD_DATA_WORD}
+      - EXPIRE_TIME=${EXPIRE_TIME}
+      - API_COST=${API_COST}
     #ports:
     #  - "8501:8501"
     #  - "8502:8502"

@@ -2,7 +2,7 @@
 
 import streamlit as st
 from streamlit.web.server.websocket_headers import _get_websocket_headers
-import re,logging, csv, io, openai, os, redis, time, json, tiktoken, datetime
+import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
@@ -16,23 +16,6 @@ hide_deploy_button_style = """
 </style>
 """
 st.markdown(hide_deploy_button_style, unsafe_allow_html=True)
-
-# USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
-# session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
-# messages_id : sessionのうち、そのchat数で管理されているID。session_idとそのchat数で構成。f"{session_id}_{chat数:0>6}"
-
-# redisCliMessages : session_idでchat_messageを管理する。構造 {session_id : [{"role": "user", "content": user_msg},{"role": "assistant", "content": assistant_msg} ,...]}
-redisCliMessages = redis.Redis(host="redis_6379", port=6379, db=0)
-# redisCliUserSetting : USER_IDでmodelを管理する。構造{USER_ID : model}
-redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
-# redisCliTitleAtUser : USER_IDとsession_idでタイトルを管理する。構造{USER_ID : {session_id, timestamp}}
-redisCliTitleAtUser = redis.Redis(host="redis_6379", port=6379, db=2)
-# redisCliAccessTime : messages_idとscoreとしてunixtimeを管理。構造{'access' : {messages_id : unixtime(as score)}}
-redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
-# redisCliUserAccess : USER_IDと'LOGIN'、'LOGOUT'の別でscoreとしてlogin_timeを管理する。構造{USER_ID : {kind('LOGOUT' or 'LOGIN') : unixtime(as score)}}
-redisCliUserAccess = redis.Redis(host="redis_6379", port=6379, db=4)
-# redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
-redisCliChatData = redis.Redis(host="redis_6379", port=6379, db=5)
 
 
 def trim_tokens(
@@ -320,12 +303,10 @@ def record_title_at_user_redis(
     )
     #   レスポンスからタイトルを取得します。
     generated_title = chat_response["choices"][0]["message"].get("content", "")
-    pattern_last_colon = r'.*[:：](.*)$'
-    pattern_brackets = r'[「『](.+?)[」』]'
-    generated_title = re.sub(pattern_last_colon, r'\1', generated_title)
-    generated_title = re.sub(pattern_brackets, r'\1', generated_title)
-    
-
+    pattern_last_colon = r".*[:：](.*)$"
+    pattern_brackets = r'["「『](.+?)[」』"]'
+    generated_title = re.sub(pattern_last_colon, r"\1", generated_title)
+    generated_title = re.sub(pattern_brackets, r"\1", generated_title)
 
     # Redisにタイトルを保存します。
     redisCliTitleAtUser.hset(USER_ID, session_id, generated_title)
@@ -338,6 +319,7 @@ def record_title_at_user_redis(
         "prompt",
         json.dumps(
             {
+                "USER_ID": USER_ID,
                 "messages": title_prompt_trimed,
                 "timestamp": timestamp,
                 "num_tokens": calc_token_tiktoken(str(title_prompt_trimed)),
@@ -345,12 +327,14 @@ def record_title_at_user_redis(
             }
         ),
     )
+    redisCliChatData.expire(message_id, EXPIRE_TIME)
     # RedisにメッセージIDと'response'のキーで、モデル名、メッセージ、タイムスタンプ、トークン数を保存します。
     redisCliChatData.hset(
         message_id,
         "response",
         json.dumps(
             {
+                "USER_ID": USER_ID,
                 "messages": [{"role": "assistant", "content": generated_title}],
                 "timestamp": timestamp,
                 "num_tokens": calc_token_tiktoken(generated_title),
@@ -406,56 +390,88 @@ def get_user_chats_within_last_several_days_sorted(days: int) -> list[tuple]:
     return user_session_id_title_within_last_several_days_sorted
 
 
+# Unixタイムスタンプをローカルタイムに変換する関数
+def unixtime_to_localtime(unixtime):
+    utc_time = datetime.datetime.utcfromtimestamp(unixtime)
+    local_time = utc_time.replace(tzinfo=pytz.utc).astimezone(
+        pytz.timezone(os.environ["TZ"])
+    )  # Noneを指定するとローカルタイムゾーンに変換される
+    formatted_time = local_time.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )  # エクセルでも扱いやすい形式にフォーマット
+    return formatted_time
+
 
 def get_chat_data_as_csv():
     # StringIOオブジェクトを初期化してCSVデータを保持する
     csv_output = io.StringIO()
-    fieldnames = ["messages_id", "kind", "model", "timestamp", "messages", "num_tokens"]
+    fieldnames = [
+        "messages_id",
+        "kind",
+        "USER_ID",
+        "model",
+        "timestamp",
+        "messages",
+        "num_tokens",
+    ]
     writer = csv.DictWriter(csv_output, fieldnames=fieldnames)
 
     # ヘッダーを書き込む
     writer.writeheader()
 
     # Redisハッシュからすべてのキーを取得する（仮のコード部分）
-    keys = redisCliChatData.keys()  # この行は仮のコードで、実際のRedisクライアントのコードに置き換えてください。
+    keys = (
+        redisCliChatData.keys()
+    )  # この行は仮のコードで、実際のRedisクライアントのコードに置き換えてください。
     for key in keys:
         # 各キーのデータを取得する
         data = redisCliChatData.hgetall(key)  # この行も仮のコードです。
         for kind, value in data.items():
             value_dict = json.loads(value)
-            writer.writerow({
-                "messages_id": key.decode(),
-                "kind": kind.decode(),
-                "model": value_dict["model"],
-                "timestamp": value_dict["timestamp"],
-                # ここで ensure_ascii=False を設定
-                "messages": json.dumps(value_dict["messages"], ensure_ascii=False),  # 日本語がエスケープされずに出力される
-                "num_tokens": value_dict["num_tokens"],
-            })
+            localtime = unixtime_to_localtime(value_dict["timestamp"])
+            writer.writerow(
+                {
+                    "USER_ID": value_dict["USER_ID"],
+                    "messages_id": key.decode(),
+                    "kind": kind.decode(),
+                    "model": value_dict["model"],
+                    "timestamp": localtime,
+                    # ここで ensure_ascii=False を設定
+                    "messages": json.dumps(
+                        value_dict["messages"], ensure_ascii=False
+                    ),  # 日本語がエスケープされずに出力される
+                    "num_tokens": value_dict["num_tokens"],
+                }
+            )
 
     # CSVデータをstrとして取得する
     csv_data_str = csv_output.getvalue()
     # CSVデータをShift-JISでエンコードする
-    csv_data_shift_jis = csv_data_str.encode('shift_jis')
+    csv_data_shift_jis = csv_data_str.encode("shift_jis")
 
     return csv_data_shift_jis
 
 
+# USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
+# session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
+# messages_id : sessionのうち、そのchat数で管理されているID。session_idとそのchat数で構成。f"{session_id}_{chat数:0>6}"
 
-
-#  サイドバーにチャットデータのCSVダウンロードボタンを追加
-def get_chat_data_as_csv_for_download():
-    # CSVデータを生成する関数を呼び出す
-    csv_data = get_chat_data_as_csv()
-    # BytesIOオブジェクトにエンコードして返す
-    return io.BytesIO(csv_data.encode())
-
-
-
+# redisCliMessages : session_idでchat_messageを管理する。構造 {session_id : [{"role": "user", "content": user_msg},{"role": "assistant", "content": assistant_msg} ,...]}
+redisCliMessages = redis.Redis(host="redis_6379", port=6379, db=0)
+# redisCliUserSetting : USER_IDでmodelを管理する。構造{USER_ID : model}
+redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
+# redisCliTitleAtUser : USER_IDとsession_idでタイトルを管理する。構造{USER_ID : {session_id, timestamp}}
+redisCliTitleAtUser = redis.Redis(host="redis_6379", port=6379, db=2)
+# redisCliAccessTime : messages_idとscoreとしてunixtimeを管理。構造{'access' : {messages_id : unixtime(as score)}}
+redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
+# redisCliUserAccess : USER_IDと'LOGIN'、'LOGOUT'の別でscoreとしてlogin_timeを管理する。構造{USER_ID : {kind('LOGOUT' or 'LOGIN') : unixtime(as score)}}
+redisCliUserAccess = redis.Redis(host="redis_6379", port=6379, db=4)
+# redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
+redisCliChatData = redis.Redis(host="redis_6379", port=6379, db=5)
 
 headers = _get_websocket_headers()
 
-#st.warning(headers)
+# st.warning(headers)
 # """
 try:
     USER_ID = headers["Oidc_claim_sub"]
@@ -469,17 +485,16 @@ try:
         .decode("utf8")
     )
     login_time = int(headers["Oidc_claim_exp"]) - 3600
-    #EMAIL = headers.get("Oidc_claim_email", " ")
+
 except Exception as e:
     st.warning(e)
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
-    #EMAIL = "error@ggg.com"
     login_time = time.time()
     if True:
         time.sleep(3)
         st.rerun()
-    # logout()
+
 
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
@@ -515,10 +530,10 @@ DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "localhost")
 LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
 
 # data download用の文言を取得する。
-DOWNLOAD_DATA_WORD = os.environ.get('DOWNLOAD_DATA_WORD','')
+DOWNLOAD_DATA_WORD = os.environ.get("DOWNLOAD_DATA_WORD", "")
 
-    
-
+# redisのキーの蒸発時間を決める。基本30日
+EXPIRE_TIME = int(os.environ.get("EXPIRE_TIME", 24 * 3600 * 30))
 
 #  アシスタントの警告メッセージ
 #  ユーザーに対して表示する警告メッセージを定義します。
@@ -548,6 +563,8 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
     json.loads(os.environ["TITLE_MODEL"]).items()
 )[0]
 
+API_COST = json.loads(os.environ["API_COST"])
+
 
 # %%
 
@@ -556,31 +573,54 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
 if "id" not in st.session_state:
     logger.debug("session initialized")
     st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
+
     # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
     if not redisCliUserSetting.hexists(USER_ID, "model"):
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
     # もしUSER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
     if redisCliUserSetting.hget(USER_ID, "model").decode() not in AVAILABLE_MODELS:
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
+    redisCliAccessTime.zremrangebyscore("access", "-inf", time.time() - EXPIRE_TIME)
 
 
-# 過去の最大トークン数
-# INPUT_MAX_TOKENS = 20
+redisCliUserSetting.expire(USER_ID, EXPIRE_TIME)
+redisCliUserAccess.expire(USER_ID, EXPIRE_TIME)
+redisCliTitleAtUser.expire(USER_ID, EXPIRE_TIME)
 
 logger.debug(f"session_id first : {st.session_state['id']}")
 
+#  今日のの深夜0時を表すdatetimeオブジェクトを作成
+today = datetime.datetime.now()
+today_midnight = today.replace(hour=0, minute=0, second=0, microsecond=0)
+#  今日の深夜0時をUNIXタイムスタンプ（秒単位の時間）に変換
+today_midnight_unixtime = int(today_midnight.timestamp())
 
+# Redisの"access"スコアレッドにおいて、指定日数前のUNIXタイムスタンプよりも大きいスコアを持つmessagesIDを取得
+messages_id_within_today: List[bytes] = redisCliAccessTime.zrangebyscore(
+    "access", today_midnight_unixtime, "+inf"
+)
+
+logger.debug(f"API_COST : {API_COST}")
+cost_team, cost_mine = 0, 0
+for message_id in messages_id_within_today:
+    for kind, data in redisCliChatData.hgetall(message_id).items():
+        data = json.loads(data)
+        # logger.debug(f'data : {data}')
+        key = kind.decode() + "_" + data["model"]
+        cost_team += API_COST[key]
+        if data.get("USER_ID") == USER_ID:
+            cost_mine += API_COST[key]
 
 st.title(MY_NAME + "さんとのチャット")
 #  ダウンロードボタンを追加
 
-
-
 if st.sidebar.button("Logout"):
     logout()
 
-
-
+st.sidebar.markdown(
+    f"<p style='font-size:20px; color:green;'>{cost_mine:.3f}/{cost_team:.3f}</p>",
+    unsafe_allow_html=True,
+)
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
 model: str = redisCliUserSetting.hget(USER_ID, "model").decode()
@@ -648,17 +688,16 @@ for chat in redisCliMessages.lrange(st.session_state["id"], 0, -1):
 # ユーザー入力
 user_msg: str = st.chat_input("ここにメッセージを入力")
 
-if DOWNLOAD_DATA_WORD and user_msg == DOWNLOAD_DATA_WORD:    
+if DOWNLOAD_DATA_WORD and user_msg == DOWNLOAD_DATA_WORD:
     st.download_button(
-    label="Download Data",
-    data=get_chat_data_as_csv(),
-    file_name="chatdata.csv",
-    mime="text/csv",
+        label="Download Data",
+        data=io.BytesIO(get_chat_data_as_csv().encode()),
+        file_name="chatdata.csv",
+        mime="text/csv",
     )
 
 # 処理開始
 elif user_msg:
-
 
     # logger.debug(f'session_id second : {st.session_state['id']}')
 
@@ -667,6 +706,7 @@ elif user_msg:
         st.write(user_msg)
     new_messages: Dict[str, str] = {"role": "user", "content": user_msg}
     redisCliMessages.rpush(st.session_state["id"], json.dumps(new_messages))
+    redisCliMessages.expire(st.session_state["id"], EXPIRE_TIME)
     error_flag = False
     try:
         now: float = time.time()
@@ -709,8 +749,7 @@ elif user_msg:
             title_future = executor1.submit(
                 record_title_at_user_redis, messages, st.session_state["id"], now
             )
-            #title = record_title_at_user_redis(messages, st.session_state["id"], now)
-            
+            # title = record_title_at_user_redis(messages, st.session_state["id"], now)
 
         # messages_idを定義。session_idにmessagesの長さを加える。
         messages_id = f"{st.session_state['id']}_{redisCliMessages.llen(st.session_state['id']):0>6}"
@@ -725,6 +764,7 @@ elif user_msg:
             "prompt",
             json.dumps(
                 {
+                    "USER_ID": USER_ID,
                     "model": model,  #  使用するAIモデルの名前
                     "timestamp": now,  #  メッセージのタイムスタンプ
                     "messages": trimed_messages,  #  トリムされたメッセージのリスト
@@ -734,6 +774,7 @@ elif user_msg:
                 }
             ),
         )
+        redisCliChatData.expire(messages_id, EXPIRE_TIME)
 
         #  アシスタントのメッセージを格納する辞書を初期化
         assistant_messages = {"role": "assistant", "content": ""}
@@ -770,6 +811,7 @@ elif user_msg:
                     "response",
                     json.dumps(
                         {
+                            "USER_ID": USER_ID,
                             "model": model,  #   使用するAIモデルの名前
                             "timestamp": now,  #   メッセージのタイムスタンプ
                             "messages": assistant_msg,  #   トリムされたメッセージのリスト
