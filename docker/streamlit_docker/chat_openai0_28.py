@@ -691,7 +691,7 @@ user_msg: str = st.chat_input("ここにメッセージを入力")
 if DOWNLOAD_DATA_WORD and user_msg == DOWNLOAD_DATA_WORD:
     st.download_button(
         label="Download Data",
-        data=io.BytesIO(get_chat_data_as_csv().encode()),
+        data=io.BytesIO(get_chat_data_as_csv()),
         file_name="chatdata.csv",
         mime="text/csv",
     )
