@@ -2,15 +2,13 @@
 
 import streamlit as st
 from streamlit.web.server.websocket_headers import _get_websocket_headers
-import logging
+import re,logging, csv, io, openai, os, redis, time, json, tiktoken, datetime
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
-import openai, os, redis, time, json, tiktoken, datetime
-import numpy as np
-from copy import copy
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
+
 
 hide_deploy_button_style = """
 <style>
@@ -220,25 +218,26 @@ def initialize_logger(user_id=""):
     else:
         return logger
 
+
 #  ユーザーのログイン処理を行う関数
-def login_check(login_time : float) -> None:
+def login_check(login_time: float) -> None:
     #  ユーザーの最後のアクセスログを取得
     last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
     #  最後のアクセスログが存在しない場合、ログイン時間を登録
     if not last_access_log:
-        redisCliUserAccess.zadd(USER_ID, {'LOGIN' : login_time})
+        redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
     else:
         #  最後のアクセスログの種類と時間を取得
-        kind : str = last_access_log[0][0].decode()
-        last_log_time : float = last_access_log[0][1]
+        kind: str = last_access_log[0][0].decode()
+        last_log_time: float = last_access_log[0][1]
         #  最後のアクセスログがログインの場合、新しいログイン時間が古いものよりも新しい場合に更新
-        if kind == 'LOGIN':
+        if kind == "LOGIN":
             if last_log_time < login_time:
-                redisCliUserAccess.zadd(USER_ID, {'LOGIN' : login_time})
+                redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
         #  最後のアクセスログがログアウトの場合、新しいログイン時間が古いものよりも新しい場合に更新
-        else: # kind == 'LOGOUT'
+        else:  # kind == 'LOGOUT'
             if last_log_time < login_time:
-                redisCliUserAccess.zadd(USER_ID, {'LOGIN' : login_time})
+                redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
             else:
                 #  古いログイン時間が新しいものよりも新しい場合、3秒待機してアプリケーションを再実行
                 st.warning("ログアウトされました。ブラウザを閉じてください")
@@ -253,7 +252,7 @@ def logout():
     js = f"{js_open_new_tab}"
     html = '<img src onerror="{}">'.format(js)
     div = Div(text=html)
-    redisCliUserAccess.zadd(USER_ID, {'LOGOUT' : time.time()})
+    redisCliUserAccess.zadd(USER_ID, {"LOGOUT": time.time()})
     st.bokeh_chart(div)
     time.sleep(3)
     st.rerun()
@@ -281,8 +280,8 @@ def record_title_at_user_redis(
     #   タイトル生成のための追加メッセージを定義します。
     additional_message = (
         "以下のユーザーメッセージから適切なタイトルを生成してください。"
-        "メッセージの主要な内容とトーンを考慮し、簡潔かつ的確なタイトルを提案してください。"
-        "メッセージ: "
+        "簡潔かつ的確なタイトルをたとえ疑問があっても強引に生成してください。"
+        "＜メッセージ＞"
     )
 
     #   メッセージの長さが規定の長さを超える場合、メッセージを切り詰めます。
@@ -321,11 +320,18 @@ def record_title_at_user_redis(
     )
     #   レスポンスからタイトルを取得します。
     generated_title = chat_response["choices"][0]["message"].get("content", "")
+    pattern_last_colon = r'.*[:：](.*)$'
+    pattern_brackets = r'[「『](.+?)[」』]'
+    generated_title = re.sub(pattern_last_colon, r'\1', generated_title)
+    generated_title = re.sub(pattern_brackets, r'\1', generated_title)
+    
+
+
     # Redisにタイトルを保存します。
     redisCliTitleAtUser.hset(USER_ID, session_id, generated_title)
 
     # 特別なtitle作成用のmessage_idである{session_id}_000000を付与
-    message_id = f"{st.session_state['id']}_{0:0>6}"
+    message_id = f"{session_id}_{0:0>6}"
     # RedisにメッセージIDと'prompt'のキーで、モデル名、メッセージ、タイムスタンプ、トークン数を保存します。
     redisCliChatData.hset(
         message_id,
@@ -401,10 +407,55 @@ def get_user_chats_within_last_several_days_sorted(days: int) -> list[tuple]:
 
 
 
+def get_chat_data_as_csv():
+    # StringIOオブジェクトを初期化してCSVデータを保持する
+    csv_output = io.StringIO()
+    fieldnames = ["messages_id", "kind", "model", "timestamp", "messages", "num_tokens"]
+    writer = csv.DictWriter(csv_output, fieldnames=fieldnames)
+
+    # ヘッダーを書き込む
+    writer.writeheader()
+
+    # Redisハッシュからすべてのキーを取得する（仮のコード部分）
+    keys = redisCliChatData.keys()  # この行は仮のコードで、実際のRedisクライアントのコードに置き換えてください。
+    for key in keys:
+        # 各キーのデータを取得する
+        data = redisCliChatData.hgetall(key)  # この行も仮のコードです。
+        for kind, value in data.items():
+            value_dict = json.loads(value)
+            writer.writerow({
+                "messages_id": key.decode(),
+                "kind": kind.decode(),
+                "model": value_dict["model"],
+                "timestamp": value_dict["timestamp"],
+                # ここで ensure_ascii=False を設定
+                "messages": json.dumps(value_dict["messages"], ensure_ascii=False),  # 日本語がエスケープされずに出力される
+                "num_tokens": value_dict["num_tokens"],
+            })
+
+    # CSVデータをstrとして取得する
+    csv_data_str = csv_output.getvalue()
+    # CSVデータをShift-JISでエンコードする
+    csv_data_shift_jis = csv_data_str.encode('shift_jis')
+
+    return csv_data_shift_jis
+
+
+
+
+#  サイドバーにチャットデータのCSVダウンロードボタンを追加
+def get_chat_data_as_csv_for_download():
+    # CSVデータを生成する関数を呼び出す
+    csv_data = get_chat_data_as_csv()
+    # BytesIOオブジェクトにエンコードして返す
+    return io.BytesIO(csv_data.encode())
+
+
+
 
 headers = _get_websocket_headers()
 
-
+st.warning(headers)
 # """
 try:
     USER_ID = headers["Oidc_claim_sub"]
@@ -423,14 +474,18 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
+    if True:
+        time.sleep(3)
+        st.rerun()
     # logout()
+
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
     st.session_state["logger_initialized"] = True
 else:
     logger = logging.getLogger(__name__)
-logger.debug(f'headers : {headers}')
+logger.debug(f"headers : {headers}")
 
 executor1 = ThreadPoolExecutor(1)
 
@@ -445,11 +500,11 @@ login_check(login_time)
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # AZURE用の設定
-if 'OPENAI_API_TYPE' in os.environ:
+if "OPENAI_API_TYPE" in os.environ:
     openai.api_type = os.environ["OPENAI_API_TYPE"]
-if 'OPENAI_API_BASE' in os.environ:
+if "OPENAI_API_BASE" in os.environ:
     openai.api_base = os.environ["OPENAI_API_BASE"]
-if 'OPENAI_API_VERSION' in os.environ:
+if "OPENAI_API_VERSION" in os.environ:
     openai.api_version = os.environ["OPENAI_API_VERSION"]
 
 
@@ -487,7 +542,6 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
 )[0]
 
 
-
 # %%
 
 
@@ -509,10 +563,13 @@ if "id" not in st.session_state:
 logger.debug(f"session_id first : {st.session_state['id']}")
 
 st.title(MY_NAME + "さんとのチャット")
-
-
-if st.sidebar.button("Logout"):
-    logout()
+#  ダウンロードボタンを追加
+st.sidebar.download_button(
+    label="Download Data",
+    data=get_chat_data_as_csv(),
+    file_name="chatdata.csv",
+    mime="text/csv",
+)
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
 model: str = redisCliUserSetting.hget(USER_ID, "model").decode()
@@ -529,6 +586,9 @@ redisCliUserSetting.hset(
     ),  # 選択されたモデルを設定
 )
 INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
+
+if st.sidebar.button("Logout"):
+    logout()
 
 
 # サイドバーに「New chat」ボタンを追加します。
@@ -558,8 +618,8 @@ for session_id, title in user_session_id_title_within_last_7days_sorted:
     titles.append(title)
     counter = Counter(titles)
     if counter[title] > 1:
-        title += str(counter[title]) 
-    
+        title += str(counter[title])
+
     if st.sidebar.button(title):
         #  ボタンがクリックされた場合、session_idをst.session_state['id']に代入
         #  これにより、選択されたチャットのIDが現在のセッションとして設定されます。
@@ -632,6 +692,9 @@ if user_msg:
             title_future = executor1.submit(
                 record_title_at_user_redis, messages, st.session_state["id"], now
             )
+            #title = record_title_at_user_redis(messages, st.session_state["id"], now)
+            
+
         # messages_idを定義。session_idにmessagesの長さを加える。
         messages_id = f"{st.session_state['id']}_{redisCliMessages.llen(st.session_state['id']):0>6}"
 
@@ -661,7 +724,7 @@ if user_msg:
         redisCliMessages.rpush(st.session_state["id"], json.dumps(assistant_messages))
         #  セッションIDに関連するメッセージの長さを取得
         messages_length = redisCliMessages.llen(st.session_state["id"])
-        logger.info(f'messages_length : {messages_length}')
+        logger.info(f"messages_length : {messages_length}")
 
         #  アシスタントからのメッセージを表示するためのストリームを開始
         with st.chat_message("assistant"):
@@ -683,7 +746,7 @@ if user_msg:
                     messages_length - 1,
                     json.dumps(assistant_messages),
                 )
-                logger.info(f'redisCliMessages set : {messages_length - 1}')
+                logger.info(f"redisCliMessages set : {messages_length - 1}")
                 #  メッセージIDにアシスタントのレスポンスを保存
                 redisCliChatData.hset(
                     messages_id,
@@ -703,7 +766,5 @@ if user_msg:
                 assistant_response_area.write(assistant_msg)
             logger.info(f"Response for chat : {assistant_msg}")
             # logger.debug('Rerun')
-        #st.rerun()
 
-        # 処理終了
-
+# %%
