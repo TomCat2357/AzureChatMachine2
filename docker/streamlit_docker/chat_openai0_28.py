@@ -447,7 +447,7 @@ def get_chat_data_as_csv():
     # CSVデータをstrとして取得する
     csv_data_str = csv_output.getvalue()
     # CSVデータをShift-JISでエンコードする
-    csv_data_shift_jis = csv_data_str.encode("shift_jis")
+    csv_data_shift_jis = csv_data_str.encode("shift_jis", errors='replace')
 
     return csv_data_shift_jis
 
