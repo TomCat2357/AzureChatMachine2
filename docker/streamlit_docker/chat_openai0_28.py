@@ -455,7 +455,7 @@ def get_chat_data_as_csv_for_download():
 
 headers = _get_websocket_headers()
 
-st.warning(headers)
+#st.warning(headers)
 # """
 try:
     USER_ID = headers["Oidc_claim_sub"]
