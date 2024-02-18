@@ -44,8 +44,6 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 
 ## セットアップ方法
 
-## セットアップ方法
-
 1. このリポジトリをクローンします
 ```bash
 git clone https://github.com/TomCat2357/chatrobo.git
