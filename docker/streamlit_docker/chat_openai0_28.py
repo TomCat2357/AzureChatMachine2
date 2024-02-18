@@ -469,10 +469,12 @@ try:
         .decode("utf8")
     )
     login_time = int(headers["Oidc_claim_exp"]) - 3600
+    EMAIL = headers.get("Oidc_claim_email", " ")
 except Exception as e:
     st.warning(e)
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
+    EMAIL = "error@ggg.com"
     login_time = time.time()
     if True:
         time.sleep(3)
@@ -562,14 +564,25 @@ if "id" not in st.session_state:
 
 logger.debug(f"session_id first : {st.session_state['id']}")
 
+if EMAIL.split('@')[0] == 'admin': 
+    st.download_button(
+        label="Download Data",
+        data=get_chat_data_as_csv(),
+        file_name="chatdata.csv",
+        mime="text/csv",
+    )
+
+
 st.title(MY_NAME + "さんとのチャット")
 #  ダウンロードボタンを追加
-st.sidebar.download_button(
-    label="Download Data",
-    data=get_chat_data_as_csv(),
-    file_name="chatdata.csv",
-    mime="text/csv",
-)
+
+
+
+if st.sidebar.button("Logout"):
+    logout()
+
+
+
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
 model: str = redisCliUserSetting.hget(USER_ID, "model").decode()
@@ -586,10 +599,6 @@ redisCliUserSetting.hset(
     ),  # 選択されたモデルを設定
 )
 INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
-
-if st.sidebar.button("Logout"):
-    logout()
-
 
 # サイドバーに「New chat」ボタンを追加します。
 # ボタンがクリックされたときにアプリケーションを再実行します。
