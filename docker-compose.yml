@@ -34,13 +34,17 @@ services:
     environment:
       - 'TZ=Asia/Tokyo'
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - API_TYPE=${OPENAI_API_TYPE}
+      - API_BASE=${OPENAI_API_BASE}
+      - API_VERSION=${OPENAI_API_VERSION}
       - LATE_LIMIT=${LATE_LIMIT}
       - AVAILABLE_MODELS=${AVAILABLE_MODELS}
       - TITLE_MODEL=${TITLE_MODEL}
       - DOMAIN_NAME=${DOMAIN_NAME}
-    ports:
-      - "8501:8501"
-      - "8502:8502"
+      - DOWNLOAD_DATA_WORD=${DOWNLOAD_DATA_WORD}
+    #ports:
+    #  - "8501:8501"
+    #  - "8502:8502"
     expose:
       - "8501"
     command: sh -c "streamlit run chat_openai0_28.py"

@@ -469,12 +469,12 @@ try:
         .decode("utf8")
     )
     login_time = int(headers["Oidc_claim_exp"]) - 3600
-    EMAIL = headers.get("Oidc_claim_email", " ")
+    #EMAIL = headers.get("Oidc_claim_email", " ")
 except Exception as e:
     st.warning(e)
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
-    EMAIL = "error@ggg.com"
+    #EMAIL = "error@ggg.com"
     login_time = time.time()
     if True:
         time.sleep(3)
@@ -502,17 +502,22 @@ login_check(login_time)
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # AZURE用の設定
-if "OPENAI_API_TYPE" in os.environ:
-    openai.api_type = os.environ["OPENAI_API_TYPE"]
-if "OPENAI_API_BASE" in os.environ:
-    openai.api_base = os.environ["OPENAI_API_BASE"]
-if "OPENAI_API_VERSION" in os.environ:
-    openai.api_version = os.environ["OPENAI_API_VERSION"]
+if os.environ.get("API_TYPE"):
+    openai.api_type = os.environ["API_TYPE"]
+if os.environ.get("API_BASE"):
+    openai.api_base = os.environ["API_BASE"]
+if os.environ.get("API_VERSION"):
+    openai.api_version = os.environ["API_VERSION"]
 
 
 # 環境変数からDOMAIN_NAMEを取得
 DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "localhost")
 LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
+
+# data download用の文言を取得する。
+DOWNLOAD_DATA_WORD = os.environ.get('DOWNLOAD_DATA_WORD','')
+
+    
 
 
 #  アシスタントの警告メッセージ
@@ -564,13 +569,6 @@ if "id" not in st.session_state:
 
 logger.debug(f"session_id first : {st.session_state['id']}")
 
-if EMAIL.split('@')[0] == 'admin': 
-    st.download_button(
-        label="Download Data",
-        data=get_chat_data_as_csv(),
-        file_name="chatdata.csv",
-        mime="text/csv",
-    )
 
 
 st.title(MY_NAME + "さんとのチャット")
@@ -650,8 +648,18 @@ for chat in redisCliMessages.lrange(st.session_state["id"], 0, -1):
 # ユーザー入力
 user_msg: str = st.chat_input("ここにメッセージを入力")
 
+if DOWNLOAD_DATA_WORD and user_msg == DOWNLOAD_DATA_WORD:    
+    st.download_button(
+    label="Download Data",
+    data=get_chat_data_as_csv(),
+    file_name="chatdata.csv",
+    mime="text/csv",
+    )
+
 # 処理開始
-if user_msg:
+elif user_msg:
+
+
     # logger.debug(f'session_id second : {st.session_state['id']}')
 
     # 最新のメッセージを表示
