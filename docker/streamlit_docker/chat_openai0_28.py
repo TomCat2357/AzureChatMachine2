@@ -457,17 +457,17 @@ def get_chat_data_as_csv():
 # messages_id : sessionのうち、そのchat数で管理されているID。session_idとそのchat数で構成。f"{session_id}_{chat数:0>6}"
 
 # redisCliMessages : session_idでchat_messageを管理する。構造 {session_id : [{"role": "user", "content": user_msg},{"role": "assistant", "content": assistant_msg} ,...]}
-redisCliMessages = redis.Redis(host="redis_6379", port=6379, db=0)
+redisCliMessages = redis.Redis(host="redis", port=6379, db=0)
 # redisCliUserSetting : USER_IDでmodelを管理する。構造{USER_ID : model}
-redisCliUserSetting = redis.Redis(host="redis_6379", port=6379, db=1)
+redisCliUserSetting = redis.Redis(host="redis", port=6379, db=1)
 # redisCliTitleAtUser : USER_IDとsession_idでタイトルを管理する。構造{USER_ID : {session_id, timestamp}}
-redisCliTitleAtUser = redis.Redis(host="redis_6379", port=6379, db=2)
+redisCliTitleAtUser = redis.Redis(host="redis", port=6379, db=2)
 # redisCliAccessTime : messages_idとscoreとしてunixtimeを管理。構造{'access' : {messages_id : unixtime(as score)}}
-redisCliAccessTime = redis.Redis(host="redis_6379", port=6379, db=3)
+redisCliAccessTime = redis.Redis(host="redis", port=6379, db=3)
 # redisCliUserAccess : USER_IDと'LOGIN'、'LOGOUT'の別でscoreとしてlogin_timeを管理する。構造{USER_ID : {kind('LOGOUT' or 'LOGIN') : unixtime(as score)}}
-redisCliUserAccess = redis.Redis(host="redis_6379", port=6379, db=4)
+redisCliUserAccess = redis.Redis(host="redis", port=6379, db=4)
 # redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
-redisCliChatData = redis.Redis(host="redis_6379", port=6379, db=5)
+redisCliChatData = redis.Redis(host="redis", port=6379, db=5)
 
 headers = _get_websocket_headers()
 

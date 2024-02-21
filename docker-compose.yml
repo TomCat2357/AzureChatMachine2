@@ -52,7 +52,7 @@ services:
     command: sh -c "streamlit run chat_openai0_28.py"
     depends_on:
       - apache
-      - redis_6379
+      - redis
     volumes:
       - ./data/streamlit_log:/root/log/  # log保存用
       - ./docker/streamlit_docker:/root/docker/ # chat_openai0_28.pyアクセス用
@@ -60,14 +60,14 @@ services:
     working_dir: '/root/docker/'
   
 
-  redis_6379:
-    container_name: 'redis_6379'
+  redis:
+    container_name: 'redis'
     image: redis:latest
     expose:
       - "6379"
     volumes:
-      - ./data/redis_6379_snapshot/:/data/ # snapshot保存用
-      - ./docker/redis_conf/6379/:/usr/local/etc/redis/ # redis設定用
+      - ./data/redis_snapshot/:/data/ # snapshot保存用
+      - ./docker/redis_conf/:/usr/local/etc/redis/ # redis設定用
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     restart: always
 
