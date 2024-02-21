@@ -26,11 +26,10 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 - **apache**: Apacheサーバーを実行するコンテナ。
 - **streamlit**: Streamlitアプリケーションを実行するコンテナ。
 - **redis**: Redisデータベースを実行するコンテナ。
-- 
 ## Dockerファイル
 - **apache_docker/Dockerfile**: Apacheコンテナ用の構成ファイル。
 - **streamlit_docker/Dockerfile**: Streamlitコンテナ用の構成ファイル。
-- **redis_conf/6379/redis.conf**: Redisコンテナの設定ファイル。
+- **redis_conf/redis.conf**: Redisコンテナの設定ファイル。
 
 ## サービス構成
 - **apache**: Apacheサーバーを実行し、80番および443番ポートでリッスンします。これらのポートへのアクセスはStreamlitへ転送されます。
@@ -61,7 +60,7 @@ sudo bash ./init_setup_20231223.sh
 
 4. `.env`を編集して、必要な情報を入力してください。
 ```bash
-sudo vim .env
+sudo nano .env
 ```
 
 ```
@@ -126,7 +125,7 @@ sudo bash dns_challenge_20240212.sh
 sudo docker-compose up --build -d
 ```
 
-8. ブラウザでURLを入力し、Chatを開始します。
+8. ブラウザでURLを入力すると、Azure Entra IDの認証が行われるので、ID、パスワードを入力し、必要に応じて2FAも行い、Chatを開始します。
 ```bash
 https://<DOMAIN_NAME>
 ```
