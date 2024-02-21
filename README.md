@@ -25,7 +25,7 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 ## Dockerコンテナ構成
 - **apache**: Apacheサーバーを実行するコンテナ。
 - **streamlit**: Streamlitアプリケーションを実行するコンテナ。
-- **redis_6379**: Redisデータベースを実行するコンテナ。
+- **redis**: Redisデータベースを実行するコンテナ。
 - 
 ## Dockerファイル
 - **apache_docker/Dockerfile**: Apacheコンテナ用の構成ファイル。
@@ -34,8 +34,8 @@ OPENAIのAPIを用いて、GPTとチャットするためのプロジェクト�
 
 ## サービス構成
 - **apache**: Apacheサーバーを実行し、80番および443番ポートでリッスンします。これらのポートへのアクセスはStreamlitへ転送されます。
-- **streamlit**: Streamlitアプリケーションを実行し、8501番ポートを公開します。プロンプトやその他データの保存にはredis_6379コンテナを使用します。
-- **redis_6379**: Redisデータベースを実行し、6379番ポートを公開します。
+- **streamlit**: Streamlitアプリケーションを実行し、8501番ポートを公開します。プロンプトやその他データの保存にはredisコンテナを使用します。
+- **redis**: Redisデータベースを実行し、6379番ポートを公開します。
 
 ## その他
 - **init_setup_20231223.sh**: Docker関連パッケージの初回インストール用スクリプト。
@@ -87,6 +87,14 @@ PASSPHRASE=**********************************
 ## streamlit
 # OPENAIのAPIキー
 OPENAI_API_KEY=**********************************
+# OPENAIのAPIタイプ。例 azure
+OPENAI_API_TYPE=""
+# OPENAIのAPI_BASE。Private Endpointのurlを指定する。
+OPENAI_API_BASE=""
+# OPENAIのAPIのVERSION。日付を入れたりしていた。
+OPENAI_API_VERSION=""
+# DATAをDOWNLOADしたいときにプロンプトに入れるワード
+DOWNLOAD_DATA_WORD=""
 
 ### 設定
 ## streamlit
@@ -96,6 +104,10 @@ LATE_LIMIT={"COUNT":1, "PERIOD":1}
 AVAILABLE_MODELS={"gpt-3.5-turbo":256, "gpt-4":128}
 # タイトル用のモデルと限界文字数。{"モデル名" : 限界文字数}となっている。
 TITLE_MODEL={"gpt-3.5-turbo":512}
+# REDISのKEYの寿命。
+EXPIRE_TIME=2592000
+# API_COST
+API_COST={"prompt_gpt-3.5-turbo":0.0002216,"response_gpt-3.5-turbo":0.000296,"prompt_gpt-4":0.004431,"response_gpt-4":0.008861}
 ```
 
 5. Let's Encryptの証明書と秘密鍵をまだ持っていない場合、DNS01チャレンジを実行します。
