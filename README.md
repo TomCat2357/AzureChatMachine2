@@ -86,14 +86,16 @@ PASSPHRASE=**********************************
 ## streamlit
 # OPENAIのAPIキー
 OPENAI_API_KEY=**********************************
-# OPENAIのAPIタイプ。例 azure
+# OPENAIのAPIタイプ。例 azure。空白であれば指定されない。
 OPENAI_API_TYPE=""
-# OPENAIのAPI_BASE。Private Endpointのurlを指定する。
+# OPENAIのAPI_BASE。Private Endpointのurlを指定する。空白であれば指定されない。
 OPENAI_API_BASE=""
-# OPENAIのAPIのVERSION。日付を入れたりしていた。
+# OPENAIのAPIのVERSION。日付を入れたりしていた。空白であれば指定されない。
 OPENAI_API_VERSION=""
-# DATAをDOWNLOADしたいときにプロンプトに入れるワード
+# DATAをDOWNLOADしたいときにプロンプトに入れるワード。空白であれば指定されない。
 DOWNLOAD_DATA_WORD=""
+# Fernetの暗号化キー
+ENCRYPT_KEY="**************************************"
 
 ### 設定
 ## streamlit
