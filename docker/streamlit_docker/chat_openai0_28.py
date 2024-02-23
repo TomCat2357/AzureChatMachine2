@@ -8,7 +8,7 @@ from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
-
+from cryptography.fernet import Fernet
 
 hide_deploy_button_style = """
 <style>
@@ -491,7 +491,7 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if True:
+    if False:
         time.sleep(3)
         st.rerun()
 
@@ -514,15 +514,15 @@ login_check(login_time)
 
 # APIキーの設定
 # OpenAIのAPIキーを環境変数から取得して設定します。
-openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.api_key = os.environ["OA_API_KEY"]
 
 # AZURE用の設定
-if os.environ.get("API_TYPE"):
-    openai.api_type = os.environ["API_TYPE"]
-if os.environ.get("API_BASE"):
-    openai.api_base = os.environ["API_BASE"]
-if os.environ.get("API_VERSION"):
-    openai.api_version = os.environ["API_VERSION"]
+if os.environ.get("OA_API_TYPE"):
+    openai.api_type = os.environ["OA_API_TYPE"]
+if os.environ.get("OA_API_BASE"):
+    openai.api_base = os.environ["OA_API_BASE"]
+if os.environ.get("OA_API_VERSION"):
+    openai.api_version = os.environ["OA_API_VERSION"]
 
 
 # 環境変数からDOMAIN_NAMEを取得
@@ -563,7 +563,7 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
     json.loads(os.environ["TITLE_MODEL"]).items()
 )[0]
 
-API_COST = json.loads(os.environ["API_COST"])
+OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
 
 
 # %%
@@ -600,16 +600,16 @@ messages_id_within_today: List[bytes] = redisCliAccessTime.zrangebyscore(
     "access", today_midnight_unixtime, "+inf"
 )
 
-logger.debug(f"API_COST : {API_COST}")
+logger.debug(f"OPENAI_API_COST : {OPENAI_API_COST}")
 cost_team, cost_mine = 0, 0
 for message_id in messages_id_within_today:
     for kind, data in redisCliChatData.hgetall(message_id).items():
         data = json.loads(data)
         # logger.debug(f'data : {data}')
         key = kind.decode() + "_" + data["model"]
-        cost_team += API_COST[key]
+        cost_team += OPENAI_API_COST[key]
         if data.get("USER_ID") == USER_ID:
-            cost_mine += API_COST[key]
+            cost_mine += OPENAI_API_COST[key]
 
 st.title(MY_NAME + "さんとのチャット")
 #  ダウンロードボタンを追加

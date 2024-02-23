@@ -1,5 +1,5 @@
-data/redis_6379_snapshot/*
-!data/redis_6379_snapshot/.gitkeep
+data/redis_snapshot/*
+!data/redis_snapshot/.gitkeep
 data/apache_data/*
 !data/apache_data/.gitkeep
 data/streamlit_data/*

@@ -25,11 +25,5 @@ ENV PATH="/usr/local/bin:$PATH"
 
 
 # Streamlitのインストール (ここでStreamlitをインストール)
-#RUN /root/.pyenv/versions/3.10.13/envs/deploy/bin/pip install streamlit openai==0.28 tiktoken==0.3.3
-RUN pip install streamlit openai==0.28 tiktoken==0.3.3 Flask redis
-RUN pip install bokeh==2.4.3 
-# Streamlitのポート
-EXPOSE 8501
-
-# 環境変数の設定 (APIキー等を外部ファイルから読み込む)
-ENV OPENAI_API_KEY=""
+# 暗号化ライブラリー
+RUN pip install bokeh==2.4.3 cryptography==39.0.1 streamlit==1.31.1 openai==0.28 tiktoken==0.3.3 Flask redis
