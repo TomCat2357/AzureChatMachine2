@@ -493,6 +493,17 @@ except Exception as e:
     if True:
         time.sleep(3)
         st.rerun()
+st.warning(headers)
+# headers辞書をJSON文字列に変換
+headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
+
+# ダウンロードボタンを設置
+st.download_button(
+    label="headersをダウンロード",
+    data=headers_json,
+    file_name="headers.json",
+    mime="application/json",
+)
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
