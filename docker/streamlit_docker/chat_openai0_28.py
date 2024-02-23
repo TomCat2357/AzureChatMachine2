@@ -8,7 +8,7 @@ from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
-from cryptography.fernet import Fernet
+#from cryptography.fernet import Fernet
 
 hide_deploy_button_style = """
 <style>
@@ -491,11 +491,20 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if False:
+    if True:
         time.sleep(3)
         st.rerun()
+st.warning(headers)
+# headers辞書をJSON文字列に変換
+headers_json = json.dumps(headers, ensure_ascii=False, indent=2)
 
-
+# ダウンロードボタンを設置
+st.download_button(
+    label="headersをダウンロード",
+    data=headers_json,
+    file_name="headers.json",
+    mime="application/json"
+)
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
