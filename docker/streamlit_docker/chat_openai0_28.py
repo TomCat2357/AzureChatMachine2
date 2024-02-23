@@ -508,7 +508,7 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if False:
+    if True:
         time.sleep(3)
         st.rerun()
 # st.warning(headers)

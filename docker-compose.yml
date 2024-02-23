@@ -35,9 +35,9 @@ services:
     # コンテナ実行時に使用
     environment:
       - 'TZ=Asia/Tokyo'
-    ports:
-      - "8501:8501"
-      - "8502:8502"
+    #ports:
+    #  - "8501:8501"
+    #  - "8502:8502"
     expose:
       - "8501"
     command: sh -c "streamlit run chat_openai0_28.py"
