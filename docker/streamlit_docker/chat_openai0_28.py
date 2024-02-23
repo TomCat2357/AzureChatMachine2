@@ -8,7 +8,8 @@ from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
-#from cryptography.fernet import Fernet
+
+# from cryptography.fernet import Fernet
 
 hide_deploy_button_style = """
 <style>
@@ -447,7 +448,7 @@ def get_chat_data_as_csv():
     # CSVデータをstrとして取得する
     csv_data_str = csv_output.getvalue()
     # CSVデータをShift-JISでエンコードする
-    csv_data_shift_jis = csv_data_str.encode("shift_jis", errors='replace')
+    csv_data_shift_jis = csv_data_str.encode("shift_jis", errors="replace")
 
     return csv_data_shift_jis
 
@@ -476,13 +477,9 @@ headers = _get_websocket_headers()
 try:
     USER_ID = headers["Oidc_claim_sub"]
     MY_NAME = (
-        (
-            headers.get("Oidc_claim_family_name", " ")
-            + " "
-            + headers.get("Oidc_claim_given_name", " ")
-        )
-        .encode("utf8")
-        .decode("utf8")
+        headers.get("Oidc_claim_name", "")
+        .encode("latin1", errors="ignore")
+        .decode("utf8", errors="ignore")
     )
     login_time = int(headers["Oidc_claim_exp"]) - 3600
 
@@ -503,7 +500,7 @@ st.download_button(
     label="headersをダウンロード",
     data=headers_json,
     file_name="headers.json",
-    mime="application/json"
+    mime="application/json",
 )
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
