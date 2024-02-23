@@ -481,7 +481,7 @@ try:
             + " "
             + headers.get("Oidc_claim_given_name", " ")
         )
-        .encode("latin1")
+        .encode("utf8")
         .decode("utf8")
     )
     login_time = int(headers["Oidc_claim_exp"]) - 3600
@@ -491,7 +491,7 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if True:
+    if False:
         time.sleep(3)
         st.rerun()
 st.warning(headers)
