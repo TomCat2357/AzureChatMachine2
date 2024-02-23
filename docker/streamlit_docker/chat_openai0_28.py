@@ -475,7 +475,9 @@ headers = _get_websocket_headers()
 # st.warning(headers)
 # """
 try:
-    USER_ID = headers["Oidc_claim_sub"]
+    USER_ID = headers["Oidc_claim_email"]
+    if not USER_ID:
+        raise Exception('No e-mail info in claim.')
     MY_NAME = (
         headers.get("Oidc_claim_name", "")
         .encode("latin1", errors="ignore")
@@ -488,20 +490,9 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if False:
+    if True:
         time.sleep(3)
         st.rerun()
-st.warning(headers)
-# headers辞書をJSON文字列に変換
-headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
-
-# ダウンロードボタンを設置
-st.download_button(
-    label="headersをダウンロード",
-    data=headers_json,
-    file_name="headers.json",
-    mime="application/json",
-)
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
