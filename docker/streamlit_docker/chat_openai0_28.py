@@ -496,7 +496,7 @@ except Exception as e:
         st.rerun()
 st.warning(headers)
 # headers辞書をJSON文字列に変換
-headers_json = json.dumps(headers, ensure_ascii=False, indent=2)
+headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
 # ダウンロードボタンを設置
 st.download_button(
