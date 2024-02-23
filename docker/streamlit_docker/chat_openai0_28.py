@@ -8,8 +8,10 @@ from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
+from cryptography.fernet import Fernet
 
-# from cryptography.fernet import Fernet
+
+
 
 hide_deploy_button_style = """
 <style>
@@ -176,8 +178,8 @@ def initialize_logger(user_id=""):
 
     # ログメッセージのフォーマットを設定します
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s - line: %(lineno)d"
+)
 
     # コンソールへのハンドラを作成し、設定します
     console_handler = logging.StreamHandler()
@@ -302,15 +304,25 @@ def record_title_at_user_redis(
         model=TITLE_MODEL,
         stream=False,
     )
+
+    # promptを暗号化します。
+    title_prompt_encrypted:str = cipher_suite.encrypt(
+        json.dumps(title_prompt_trimed).encode()
+    ).decode()
+
     #   レスポンスからタイトルを取得します。
     generated_title = chat_response["choices"][0]["message"].get("content", "")
     pattern_last_colon = r".*[:：](.*)$"
+    washed_title = re.sub(pattern_last_colon, r"\1", generated_title)
     pattern_brackets = r'["「『](.+?)[」』"]'
-    generated_title = re.sub(pattern_last_colon, r"\1", generated_title)
-    generated_title = re.sub(pattern_brackets, r"\1", generated_title)
+    washed2_title = re.sub(pattern_brackets, r"\1", washed_title)
+
+    # titleを暗号化します
+    encrypted_washed_title:bytes = cipher_suite.encrypt(washed2_title.encode())
+    encrypted_genarated_title:str = cipher_suite.encrypt(generated_title.encode()).decode()
 
     # Redisにタイトルを保存します。
-    redisCliTitleAtUser.hset(USER_ID, session_id, generated_title)
+    redisCliTitleAtUser.hset(USER_ID, session_id, encrypted_washed_title)
 
     # 特別なtitle作成用のmessage_idである{session_id}_000000を付与
     message_id = f"{session_id}_{0:0>6}"
@@ -321,7 +333,7 @@ def record_title_at_user_redis(
         json.dumps(
             {
                 "USER_ID": USER_ID,
-                "messages": title_prompt_trimed,
+                "messages": title_prompt_encrypted,
                 "timestamp": timestamp,
                 "num_tokens": calc_token_tiktoken(str(title_prompt_trimed)),
                 "model": TITLE_MODEL,
@@ -336,7 +348,7 @@ def record_title_at_user_redis(
         json.dumps(
             {
                 "USER_ID": USER_ID,
-                "messages": [{"role": "assistant", "content": generated_title}],
+                "messages": [{"role": "assistant", "content": encrypted_genarated_title}],
                 "timestamp": timestamp,
                 "num_tokens": calc_token_tiktoken(generated_title),
                 "model": TITLE_MODEL,
@@ -344,7 +356,7 @@ def record_title_at_user_redis(
         ),
     )
     #   生成されたタイトルを返します。
-    return generated_title
+    return washed2_title
 
 
 def get_user_chats_within_last_several_days_sorted(days: int) -> list[tuple]:
@@ -379,7 +391,7 @@ def get_user_chats_within_last_several_days_sorted(days: int) -> list[tuple]:
 
     # USER_IDについての、指定日数以内のsession_idとtitleを抽出し、辞書に格納
     user_session_id_title_within_last_several_days: Dict[str, str] = {
-        session_id.decode(): title.decode()
+        session_id.decode(): cipher_suite.decrypt(title).decode()
         for session_id, title in redisCliTitleAtUser.hgetall(USER_ID).items()
         if session_id.decode() in session_id_within_last_several_days
     }
@@ -470,14 +482,20 @@ redisCliUserAccess = redis.Redis(host="redis", port=6379, db=4)
 # redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
 redisCliChatData = redis.Redis(host="redis", port=6379, db=5)
 
+
+ENCRYPT_KEY = os.environ["ENCRYPT_KEY"].encode()
+cipher_suite = Fernet(ENCRYPT_KEY)
+
+
 headers = _get_websocket_headers()
 
 # st.warning(headers)
 # """
 try:
-    USER_ID = headers["Oidc_claim_email"]
+    # USER_IDはemailの暗号化したもの
+    USER_ID:str = cipher_suite.encrypt(headers["Oidc_claim_email"].encode()).decode()
     if not USER_ID:
-        raise Exception('No e-mail info in claim.')
+        raise Exception("No email info in claim.")
     MY_NAME = (
         headers.get("Oidc_claim_name", "")
         .encode("latin1", errors="ignore")
@@ -490,20 +508,20 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if True:
+    if False:
         time.sleep(3)
         st.rerun()
-st.warning(headers)
+# st.warning(headers)
 # headers辞書をJSON文字列に変換
-headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
+# headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
 # ダウンロードボタンを設置
-st.download_button(
-    label="headersをダウンロード",
-    data=headers_json,
-    file_name="headers.json",
-    mime="application/json",
-)
+# st.download_button(
+#    label="headersをダウンロード",
+#    data=headers_json,
+#    file_name="headers.json",
+#    mime="application/json",
+# )
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
@@ -514,7 +532,6 @@ logger.debug(f"headers : {headers}")
 
 executor1 = ThreadPoolExecutor(1)
 
-# st.warning(str(int(time.time()) - login_time))
 login_check(login_time)
 
 # 定数定義
@@ -620,7 +637,7 @@ for message_id in messages_id_within_today:
             cost_mine += OPENAI_API_COST[key]
 
 st.title(MY_NAME + "さんとのチャット")
-#  ダウンロードボタンを追加
+
 
 if st.sidebar.button("Logout"):
     logout()
@@ -688,8 +705,8 @@ with st.chat_message("assistant"):
 
 
 # 以前のチャットログを表示
-for chat in redisCliMessages.lrange(st.session_state["id"], 0, -1):
-    chat = json.loads(chat)
+for chat_encrypted in redisCliMessages.lrange(st.session_state["id"], 0, -1):
+    chat:dict = json.loads(cipher_suite.decrypt(chat_encrypted))
     with st.chat_message(chat["role"]):
         st.write(chat["content"])
 
@@ -713,7 +730,8 @@ elif user_msg:
     with st.chat_message("user"):
         st.write(user_msg)
     new_messages: Dict[str, str] = {"role": "user", "content": user_msg}
-    redisCliMessages.rpush(st.session_state["id"], json.dumps(new_messages))
+    new_messages_encrypted : bytes = cipher_suite.encrypt(json.dumps(new_messages).encode())
+    redisCliMessages.rpush(st.session_state["id"], new_messages_encrypted)
     redisCliMessages.expire(st.session_state["id"], EXPIRE_TIME)
     error_flag = False
     try:
@@ -736,7 +754,7 @@ elif user_msg:
                 "アクセス数が多いため、接続できません。しばらくお待ちください。"
             )
         messages = [
-            json.loads(mes)
+            json.loads(cipher_suite.decrypt(mes))
             for mes in redisCliMessages.lrange(st.session_state["id"], 0, -1)
         ]
         response, trimed_messages = response_chatgpt(
@@ -750,7 +768,9 @@ elif user_msg:
         # エラーが出たので今回のユーザーメッセージを削除する
         redisCliMessages.rpop(st.session_state["id"], 1)
     if not error_flag:
-
+        
+        encrypted_messages : str = cipher_suite.encrypt(json.dumps(trimed_messages).encode()).decode()
+        
         # 初回のmessages、つまりlen(messages)が1だったらタイトルを付ける。
         if len(messages) == 1:
             # タイトルを付ける処理をする。
@@ -775,7 +795,7 @@ elif user_msg:
                     "USER_ID": USER_ID,
                     "model": model,  #  使用するAIモデルの名前
                     "timestamp": now,  #  メッセージのタイムスタンプ
-                    "messages": trimed_messages,  #  トリムされたメッセージのリスト
+                    "messages": encrypted_messages,  #  トリムされ暗号化されたメッセージのリスト
                     "num_tokens": calc_token_tiktoken(
                         str(trimed_messages)
                     ),  #  トリムされたメッセージのトークン数
@@ -785,34 +805,42 @@ elif user_msg:
         redisCliChatData.expire(messages_id, EXPIRE_TIME)
 
         #  アシスタントのメッセージを格納する辞書を初期化
-        assistant_messages = {"role": "assistant", "content": ""}
+        assistant_messages:Dict[str,str] = {"role": "assistant", "content": ""}
+        # roleも含まれたmessagesについても暗号化
+        assistant_messages_encrypted:bytes = cipher_suite.encrypt(json.dumps(assistant_messages).encode())
         #  セッションIDにアシスタントのメッセージを追加
-        redisCliMessages.rpush(st.session_state["id"], json.dumps(assistant_messages))
+        redisCliMessages.rpush(st.session_state["id"], assistant_messages_encrypted)
         #  セッションIDに関連するメッセージの長さを取得
         messages_length = redisCliMessages.llen(st.session_state["id"])
-        logger.info(f"messages_length : {messages_length}")
+        #logger.info(f"messages_length : {messages_length}")
 
         #  アシスタントからのメッセージを表示するためのストリームを開始
         with st.chat_message("assistant"):
             #  アシスタントのメッセージを空文字列で初期化
-            assistant_msg = ""
+            assistant_msg:str = ""
             #  アシスタントのレスポンスを表示するためのエリアを作成
             assistant_response_area = st.empty()
             #  レスポンスのチャンクを逐次処理
             for chunk in response:
                 #  チャンクからアシスタントのメッセージを取得
-                tmp_assistant_msg = chunk["choices"][0]["delta"].get("content", "")
+                tmp_assistant_msg:str = chunk["choices"][0]["delta"].get("content", "")
                 #  アシスタントのメッセージにチャンクの内容を追加
                 assistant_msg += tmp_assistant_msg
+                # assistant_msgを暗号化
+                assistant_msg_encrypted:str = cipher_suite.encrypt(assistant_msg.encode()).decode()
+                
                 #  アシスタントのメッセージを更新
                 assistant_messages["content"] = assistant_msg
+                # roleも含まれたmessagesについても暗号化
+                assistant_messages_encrypted:bytes = cipher_suite.encrypt(json.dumps(assistant_messages).encode())
+                
                 #  セッションIDにアシスタントのメッセージを更新
                 redisCliMessages.lset(
                     st.session_state["id"],
                     messages_length - 1,
-                    json.dumps(assistant_messages),
+                    assistant_messages_encrypted,
                 )
-                logger.info(f"redisCliMessages set : {messages_length - 1}")
+                #logger.info(f"redisCliMessages set : {messages_length - 1}")
                 #  メッセージIDにアシスタントのレスポンスを保存
                 redisCliChatData.hset(
                     messages_id,
@@ -822,7 +850,7 @@ elif user_msg:
                             "USER_ID": USER_ID,
                             "model": model,  #   使用するAIモデルの名前
                             "timestamp": now,  #   メッセージのタイムスタンプ
-                            "messages": assistant_msg,  #   トリムされたメッセージのリスト
+                            "messages": assistant_msg_encrypted,  #   トリムされたメッセージのリスト
                             "num_tokens": calc_token_tiktoken(
                                 assistant_msg
                             ),  #   トリムされたメッセージのトークン数
