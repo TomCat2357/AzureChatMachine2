@@ -4,9 +4,8 @@ services:
     container_name: 'apache'
     build: 
       context: ./docker/apache_docker/.
-      dockerfile: Dockerfile # ネットワーク利用時
-      #dockerfile: Dockerfile_local # ローカルで実験する際
-
+      #dockerfile: Dockerfile # ネットワーク利用時
+      dockerfile: Dockerfile_local # ローカルで実験する際
       # build時に使う
       args:
         DOMAIN_NAME: ${DOMAIN_NAME} 
@@ -25,8 +24,8 @@ services:
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
       - PASSPHRASE=${PASSPHRASE}
-    
     restart: always
+
   streamlit:
     container_name: 'streamlit'
     build: 
@@ -48,7 +47,6 @@ services:
       - ./docker/streamlit_docker:/root/docker/ # chat_openai0_28.pyアクセス用
     restart: always
     working_dir: '/root/docker/'
-  
 
   redis:
     container_name: 'redis'

@@ -21,15 +21,15 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/000-default.conf \
 && echo "    ServerName ${DOMAIN_NAME}" >> /etc/apache2/sites-available/000-default.conf \
-#&& echo "    Redirect permanent / https://${DOMAIN_NAME}" >> /etc/apache2/sites-available/000-default.conf \
-#&& echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf \
-#&& echo '<IfModule mod_ssl.c>' >> /etc/apache2/sites-available/000-default.conf \
-#&& echo '<VirtualHost *:443>' >> /etc/apache2/sites-available/000-default.conf \
-#&& echo "    ServerName ${DOMAIN_NAME}" >> /etc/apache2/sites-available/000-default.conf \
-#&& echo '    SSLEngine on' >> /etc/apache2/sites-available/000-default.conf \
+&& echo "    Redirect permanent / https://${DOMAIN_NAME}" >> /etc/apache2/sites-available/000-default.conf \
+&& echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf \
+&& echo '<IfModule mod_ssl.c>' >> /etc/apache2/sites-available/000-default.conf \
+&& echo '<VirtualHost *:443>' >> /etc/apache2/sites-available/000-default.conf \
+&& echo "    ServerName ${DOMAIN_NAME}" >> /etc/apache2/sites-available/000-default.conf \
+&& echo '    SSLEngine on' >> /etc/apache2/sites-available/000-default.conf \
 && echo '    Alias /auth /var/www/html/auth' >> /etc/apache2/sites-available/000-default.conf \
-#&& echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem" >> /etc/apache2/sites-available/000-default.conf \
-#&& echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem" >> /etc/apache2/sites-available/000-default.conf \
+&& echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem" >> /etc/apache2/sites-available/000-default.conf \
+&& echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem" >> /etc/apache2/sites-available/000-default.conf \
 && echo '    ProxyPreserveHost On' >> /etc/apache2/sites-available/000-default.conf \
 && echo '    RewriteEngine On' >> /etc/apache2/sites-available/000-default.conf \
 && echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]' >> /etc/apache2/sites-available/000-default.conf \
@@ -37,8 +37,8 @@ RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/000-default.conf \
 && echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]' >> /etc/apache2/sites-available/000-default.conf \
 && echo '    ProxyPass / http://streamlit:8501/' >> /etc/apache2/sites-available/000-default.conf \
 && echo '    ProxyPassReverse / http://streamlit:8501/' >> /etc/apache2/sites-available/000-default.conf \
-&& echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf
-#&& echo '</IfModule>' >> /etc/apache2/sites-available/000-default.conf
+&& echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf \
+&& echo '</IfModule>' >> /etc/apache2/sites-available/000-default.conf
 
 
 
@@ -72,7 +72,7 @@ RUN mkdir -p /var/www/html/auth && \
     echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
 # Certbotの自動更新設定
-RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful' --dry-run" >> /etc/crontab
+RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
 
 # 初期設定用のスクリプトを作成し、実行権限を付与
 RUN echo '#!/bin/bash'"\n"\
@@ -94,4 +94,4 @@ RUN echo '#!/bin/bash'"\n"\
 # コンテナ起動時にinit.shスクリプトを実行
 #CMD ["/bin/bash", "-c", "/init-setup.sh"]
 #CMD ["tail", "-f", "/dev/null"]
-CMD ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
+CMD ["apache2ctl", "-D", "FOREGROUND"]
