@@ -493,7 +493,8 @@ headers = _get_websocket_headers()
 # """
 try:
     # USER_IDはemailの暗号化したもの
-    USER_ID:str = cipher_suite.encrypt(headers["Oidc_claim_email"].encode()).decode()
+    #USER_ID:str = cipher_suite.encrypt(headers["Oidc_claim_email"].encode()).decode()
+    USER_ID:str = headers["Oidc_claim_email"]
     if not USER_ID:
         raise Exception("No email info in claim.")
     MY_NAME = (
