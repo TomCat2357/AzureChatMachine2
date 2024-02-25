@@ -4,8 +4,8 @@ services:
     container_name: 'apache'
     build: 
       context: ./docker/apache_docker/.
-      #dockerfile: Dockerfile # ネットワーク利用時
-      dockerfile: Dockerfile_local # ローカルで実験する際
+      dockerfile: Dockerfile # ネットワーク利用時
+      #dockerfile: Dockerfile_local # ローカルで実験する際
       # build時に使う
       args:
         DOMAIN_NAME: ${DOMAIN_NAME} 
