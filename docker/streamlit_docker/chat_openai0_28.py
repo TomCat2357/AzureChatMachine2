@@ -601,7 +601,7 @@ OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
 if "id" not in st.session_state:
     logger.debug("session initialized")
     st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
-    st.warning('not id')
+    #st.warning('not id')
 
     # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
     if not redisCliUserSetting.hexists(USER_ID, "model"):
