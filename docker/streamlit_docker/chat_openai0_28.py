@@ -311,7 +311,7 @@ def record_title_at_user_redis(
     ).decode()
 
     #   レスポンスからタイトルを取得します。
-    generated_title = chat_response["choices"][0]["message"].get("content", "")
+    generated_title : str = chat_response["choices"][0]["message"].get("content", "")
     pattern_last_colon = r".*[:：](.*)$"
     washed_title = re.sub(pattern_last_colon, r"\1", generated_title)
     pattern_brackets = r'["「『](.+?)[」』"]'
@@ -319,7 +319,8 @@ def record_title_at_user_redis(
 
     # titleを暗号化します
     encrypted_washed_title:bytes = cipher_suite.encrypt(washed2_title.encode())
-    encrypted_genarated_title:str = cipher_suite.encrypt(generated_title.encode()).decode()
+    encrypted_genarated_title_response:str \
+        = cipher_suite.encrypt(json.dumps([{'role' : 'assistant', 'content' : generated_title}]).encode()).decode()
 
     # Redisにタイトルを保存します。
     redisCliTitleAtUser.hset(USER_ID, session_id, encrypted_washed_title)
@@ -348,7 +349,7 @@ def record_title_at_user_redis(
         json.dumps(
             {
                 "USER_ID": USER_ID,
-                "messages": [{"role": "assistant", "content": encrypted_genarated_title}],
+                "messages": encrypted_genarated_title_response,
                 "timestamp": timestamp,
                 "num_tokens": calc_token_tiktoken(generated_title),
                 "model": TITLE_MODEL,
