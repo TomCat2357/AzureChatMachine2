@@ -4,7 +4,9 @@ services:
     container_name: 'apache'
     build: 
       context: ./docker/apache_docker/.
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile # ネットワーク利用時
+      #dockerfile: Dockerfile_local # ローカルで実験する際
+
       # build時に使う
       args:
         DOMAIN_NAME: ${DOMAIN_NAME} 
@@ -41,9 +43,6 @@ services:
     expose:
       - "8501"
     command: sh -c "streamlit run chat_openai0_28.py"
-    depends_on:
-      - apache
-      - redis
     volumes:
       - ./data/streamlit_log:/root/log/  # log保存用
       - ./docker/streamlit_docker:/root/docker/ # chat_openai0_28.pyアクセス用
