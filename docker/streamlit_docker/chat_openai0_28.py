@@ -511,7 +511,7 @@ except Exception as e:
     if True:
         time.sleep(3)
         st.rerun()
-# st.warning(headers)
+st.warning(headers)
 # headers辞書をJSON文字列に変換
 # headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
