@@ -20,27 +20,34 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
-      echo '<VirtualHost *:80>'; \
-      echo "    ServerName ${DOMAIN_NAME}"; \
-      echo "    Redirect permanent / https://${DOMAIN_NAME}"; \
-      echo '</VirtualHost>'; \
-      echo '<IfModule mod_ssl.c>'; \
-      echo '<VirtualHost *:443>'; \
-      echo "    ServerName ${DOMAIN_NAME}"; \
-      echo '    SSLEngine on'; \
-      echo '    Alias /auth /var/www/html/auth'; \
-      echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"; \
-      echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"; \
-      echo '    ProxyPreserveHost On'; \
-      echo '    RewriteEngine On'; \
-      echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
-      echo '    RewriteCond %{HTTP:Connection} upgrade [NC]'; \
-      echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]'; \
-      echo '    ProxyPass / http://streamlit:8501/'; \
-      echo '    ProxyPassReverse / http://streamlit:8501/'; \
-      echo '</VirtualHost>'; \
-      echo '</IfModule>'; \
-    } > /etc/apache2/sites-available/000-default.confconf
+     echo '<VirtualHost *:80>'; \
+     echo "    ServerName ${DOMAIN_NAME}"; \
+     echo "    Redirect permanent / https://${DOMAIN_NAME}"; \
+     echo '</VirtualHost>'; \
+     echo '<IfModule mod_ssl.c>'; \
+     echo '<VirtualHost *:443>'; \
+     echo "    ServerName ${DOMAIN_NAME}"; \
+     echo '    SSLEngine on'; \
+     echo '    Alias /auth /var/www/html/auth'; \
+     echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"; \
+     echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"; \
+     echo '    ProxyPreserveHost On'; \
+     echo '    RewriteEngine On'; \
+     echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
+     echo '    RewriteCond %{HTTP:Connection} upgrade [NC]'; \
+     echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]'; \
+     echo '    ProxyPass /chat http://streamlit:8501/'; \
+     echo '    ProxyPassReverse /chat http://streamlit:8501/'; \
+     echo '    <Location /settings>'; \
+     echo '        RewriteEngine On'; \
+     echo '        RewriteCond %{HTTP_REFERER} !^https://${DOMAIN_NAME}/chat'; \
+     echo '        RewriteRule ^ - [F]'; \
+     echo '        ProxyPass http://flask:5000/'; \
+     echo '        ProxyPassReverse http://flask:5000/'; \
+     echo '    </Location>'; \
+     echo '</VirtualHost>'; \
+     echo '</IfModule>'; \
+   } > /etc/apache2/sites-available/000-default.conf
 
 
 
@@ -94,6 +101,6 @@ RUN echo '#!/bin/bash'"\n"\
 
 
 # コンテナ起動時にinit.shスクリプトを実行
-#CMD ["/bin/bash", "-c", "/init-setup.sh"]
+CMD ["/bin/bash", "-c", "/init-setup.sh"]
 #CMD ["tail", "-f", "/dev/null"]
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+#CMD ["apache2ctl", "-D", "FOREGROUND"]

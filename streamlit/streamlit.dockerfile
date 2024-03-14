@@ -3,6 +3,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # NTPをインストールして時刻を同期する
 #RUN apt-get update && apt-get install -y ntp && ntpdate pool.ntp.org
 
+WORKDIR /root/docker/
 
 # Update packages and install essentials
 RUN set -x && \
@@ -26,6 +27,8 @@ ENV PATH="/usr/local/bin:$PATH"
 
 # Streamlitのインストール (ここでStreamlitをインストール)
 # 暗号化ライブラリー
-RUN pip install bokeh==2.4.3 cryptography==39.0.1 streamlit==1.31.1 openai==0.28 tiktoken==0.3.3 Flask redis
+RUN pip install bokeh==2.4.3 cryptography==39.0.1 streamlit==1.31.1 openai==0.28 tiktoken==0.3.3 redis pyjwt
 
 EXPOSE 8501
+
+CMD sh -c "streamlit run chat_openai0_28.py"

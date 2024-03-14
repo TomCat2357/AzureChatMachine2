@@ -36,8 +36,10 @@ RUN { \
       echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
       echo '    RewriteCond %{HTTP:Connection} upgrade [NC]'; \
       echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]'; \
-      echo '    ProxyPass / http://streamlit:8501/'; \
-      echo '    ProxyPassReverse / http://streamlit:8501/'; \
+      echo '    ProxyPass /chat http://streamlit:8501/'; \
+      echo '    ProxyPassReverse /chat http://streamlit:8501/'; \
+      echo '    ProxyPass /settings http://flask:5000/'; \
+      echo '    ProxyPassReverse /settings http://flask:5000/'; \
       echo '</VirtualHost>'; \
       echo '</IfModule>'; \
     } > /etc/apache2/sites-available/000-default.conf

@@ -2,14 +2,13 @@
 
 import streamlit as st
 from streamlit.web.server.websocket_headers import _get_websocket_headers
-import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime
+import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime, hashlib,jwt
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from cryptography.fernet import Fernet
-
 
 
 
@@ -178,8 +177,8 @@ def initialize_logger(user_id=""):
 
     # ログメッセージのフォーマットを設定します
     formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s - line: %(lineno)d"
-)
+        "%(asctime)s - %(name)s - %(levelname)s - line: %(lineno)d - %(message)s"
+    )
 
     # コンソールへのハンドラを作成し、設定します
     console_handler = logging.StreamHandler()
@@ -205,43 +204,74 @@ def initialize_logger(user_id=""):
         return logger
 
 
-#  ユーザーのログイン処理を行う関数
+# ユーザーのログイン処理を行う関数
 def login_check(login_time: float) -> None:
-    #  ユーザーの最後のアクセスログを取得
+    now = time.time()
+
+    # ユーザーの最後のアクセスログを取得
     last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
-    #  最後のアクセスログが存在しない場合、ログイン時間を登録
+
+    # 最後のアクセスログが存在しない場合、ログイン時間を登録
     if not last_access_log:
-        redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
+        redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
     else:
-        #  最後のアクセスログの種類と時間を取得
-        kind: str = last_access_log[0][0].decode()
+        # 最後のアクセスログの種類と時間を取得
+        kind: str = last_access_log[0][0].decode().split("_")[0]
         last_log_time: float = last_access_log[0][1]
-        #  最後のアクセスログがログインの場合、新しいログイン時間が古いものよりも新しい場合に更新
-        if kind == "LOGIN":
-            if last_log_time < login_time:
-                redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
-        #  最後のアクセスログがログアウトの場合、新しいログイン時間が古いものよりも新しい場合に更新
-        else:  # kind == 'LOGOUT'
-            if last_log_time < login_time:
-                redisCliUserAccess.zadd(USER_ID, {"LOGIN": login_time})
-            else:
-                #  古いログイン時間が新しいものよりも新しい場合、3秒待機してアプリケーションを再実行
+
+        # 最新のログがLOGOUTの場合
+        if kind == "LOGOUT":
+            # login_timeがLOGOUT時間よりも古い場合は、ログアウト処理
+            if last_log_time >= login_time:
                 st.warning("ログアウトされました。ブラウザを閉じてください")
                 time.sleep(3)
                 st.rerun()
+            # login_timeの方が新しい場合は、ログイン処理
+            else:
+                redisCliUserAccess.zadd(
+                    USER_ID, {f"LOGIN_{login_time*10**9}": login_time}
+                )
+
+        # kindが"ACTION"か"LOGIN"の場合
+        else:  # kind == "ACTION" or kind == "LOGIN"
+            # 最後のログが現在時刻よりも新しい場合、エラーを発生させる
+            if last_log_time > now:
+                raise Exception("今の時間よりも未来の時間に行動している記録があります。")
+            # 最後のログから現在時刻までSESSION_TIMEOUT_PERIODを超えていたらログアウト処理
+            if now - last_log_time > SESSION_TIMEOUT_PERIOD:
+                logout()
+            # そうではない場合、活動時間とログイン時間を更新する。
+            else:
+                redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
+                redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
 
 
-def logout():
-    # 新しいタブでログアウトページを開く
-    js_open_new_tab = f"window.location.replace('{LOGOUT_URL}')"
-    # JavaScriptを組み合わせる
-    js = f"{js_open_new_tab}"
-    html = '<img src onerror="{}">'.format(js)
+
+def jump_to_url(url: str, token : str = ""):
+    if token:
+        # トークンをクエリパラメータに追加
+        url = f"{url}?token={token}"
+    else:    
+        url = f"{url}"
+    
+    # JavaScriptを組み合わせて新しいタブで指定されたURLを開く
+    js_open_new_tab = f"window.location.replace('{url}')"
+    html = '<img src onerror="{}">'.format(js_open_new_tab)
     div = Div(text=html)
-    redisCliUserAccess.zadd(USER_ID, {"LOGOUT": time.time()})
     st.bokeh_chart(div)
+    
+    
+def logout():
+    now = time.time()
+    # ログアウト時間をRedisに記録
+    redisCliUserAccess.zadd(USER_ID, {f"LOGOUT_{now*10**9}": now})
+    # ログアウト後に指定されたURLにリダイレクト
+    jump_to_url(LOGOUT_URL)
+    # リダイレクト後にアプリケーションを再起動
     time.sleep(3)
     st.rerun()
+
+
 
 
 def record_title_at_user_redis(
@@ -306,21 +336,22 @@ def record_title_at_user_redis(
     )
 
     # promptを暗号化します。
-    title_prompt_encrypted:str = cipher_suite.encrypt(
+    title_prompt_encrypted: str = cipher_suite.encrypt(
         json.dumps(title_prompt_trimed).encode()
     ).decode()
 
     #   レスポンスからタイトルを取得します。
-    generated_title : str = chat_response["choices"][0]["message"].get("content", "")
+    generated_title: str = chat_response["choices"][0]["message"].get("content", "")
     pattern_last_colon = r".*[:：](.*)$"
     washed_title = re.sub(pattern_last_colon, r"\1", generated_title)
     pattern_brackets = r'["「『](.+?)[」』"]'
     washed2_title = re.sub(pattern_brackets, r"\1", washed_title)
 
     # titleを暗号化します
-    encrypted_washed_title:bytes = cipher_suite.encrypt(washed2_title.encode())
-    encrypted_genarated_title_response:str \
-        = cipher_suite.encrypt(json.dumps([{'role' : 'assistant', 'content' : generated_title}]).encode()).decode()
+    encrypted_washed_title: bytes = cipher_suite.encrypt(washed2_title.encode())
+    encrypted_genarated_title_response: str = cipher_suite.encrypt(
+        json.dumps([{"role": "assistant", "content": generated_title}]).encode()
+    ).decode()
 
     # Redisにタイトルを保存します。
     redisCliTitleAtUser.hset(USER_ID, session_id, encrypted_washed_title)
@@ -452,7 +483,7 @@ def get_chat_data_as_csv():
                     "timestamp": localtime,
                     # ここで ensure_ascii=False を設定
                     "messages": json.dumps(
-                        value_dict["messages"], ensure_ascii=False
+                       value_dict["messages"], ensure_ascii=False
                     ),  # 日本語がエスケープされずに出力される
                     "num_tokens": value_dict["num_tokens"],
                 }
@@ -466,13 +497,35 @@ def get_chat_data_as_csv():
     return csv_data_shift_jis
 
 
+def hash_string_md5_with_salt(input_string: str) -> str:
+    if not input_string:
+        raise ValueError("input_stringが空です。")
+    # 文字列にハッシュソルトを加えてバイトに変換
+    input_bytes = (input_string + HASH_SALT).encode()
+    # MD5ハッシュオブジェクトを作成
+    md5_hash = hashlib.md5()
+    # バイトをハッシュに更新
+    md5_hash.update(input_bytes)
+    # ハッシュを16進数の文字列として取得
+    return md5_hash.hexdigest()
+
+def make_jwt_token(data : dict, expire_time : float = 60.0) -> str:
+    now = time.time()
+    expiration_time = now + expire_time
+    
+    data_with_exp = {**data, 'exp' : expiration_time}
+    token = jwt.encode(data_with_exp, JWT_SECRET_KEY, algorithm="HS256")
+    return token
+    
+
+
 # USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
 # session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
 # messages_id : sessionのうち、そのchat数で管理されているID。session_idとそのchat数で構成。f"{session_id}_{chat数:0>6}"
 
 # redisCliMessages : session_idでchat_messageを管理する。構造 {session_id : [{"role": "user", "content": user_msg},{"role": "assistant", "content": assistant_msg} ,...]}
 redisCliMessages = redis.Redis(host="redis", port=6379, db=0)
-# redisCliUserSetting : USER_IDでmodelを管理する。構造{USER_ID : model}
+# redisCliUserSetting : USER_IDで設定を管理する。構造{USER_ID : {"model" : model_name(str), "custom_instruction" : custom_instruction(str)}
 redisCliUserSetting = redis.Redis(host="redis", port=6379, db=1)
 # redisCliTitleAtUser : USER_IDとsession_idでタイトルを管理する。構造{USER_ID : {session_id, timestamp}}
 redisCliTitleAtUser = redis.Redis(host="redis", port=6379, db=2)
@@ -483,19 +536,32 @@ redisCliUserAccess = redis.Redis(host="redis", port=6379, db=4)
 # redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
 redisCliChatData = redis.Redis(host="redis", port=6379, db=5)
 
+# JWTでの鍵
+JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
 
+# メッセージを暗号化する鍵と暗号化インスタンス
 ENCRYPT_KEY = os.environ["ENCRYPT_KEY"].encode()
 cipher_suite = Fernet(ENCRYPT_KEY)
 
+# ハッシュ関数に加えるソルト
+HASH_SALT = os.environ["HASH_SALT"]
+# SESSION_TIMEOUT_PERIOD
+# ログアウトしてしまう時間を環境変数から読み込む
+SESSION_TIMEOUT_PERIOD = int(os.environ.get("SESSION_TIMEOUT_PERIOD", 3600))
+# 環境変数からDOMAIN_NAMEを取得
+DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "localhost")
+LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
 
 headers = _get_websocket_headers()
+if headers is None:
+    headers = {}
 
 # st.warning(headers)
 # """
 try:
-    # USER_IDはemailの暗号化したもの
-    #USER_ID:str = cipher_suite.encrypt(headers["Oidc_claim_email"].encode()).decode()
-    USER_ID:str = headers["Oidc_claim_email"]
+    # USER_IDはemailにHASH_SALTを加えてmd5でハッシュ化してから１文字飛ばしで抽出したもの
+    USER_ID: str = hash_string_md5_with_salt(headers["Oidc_claim_email"])[::2]
+    # USER_ID: str = headers["Oidc_claim_email"]
     if not USER_ID:
         raise Exception("No email info in claim.")
     MY_NAME = (
@@ -510,11 +576,11 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if True:
+    if headers.get("Host", "")[:9] != "localhost":
         time.sleep(3)
         st.rerun()
-#st.warning(headers)
-#st.warning(USER_ID)
+# st.warning(headers)
+# st.warning(USER_ID)
 # headers辞書をJSON文字列に変換
 # headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
@@ -531,7 +597,7 @@ if "logger_initialized" not in st.session_state:
     st.session_state["logger_initialized"] = True
 else:
     logger = logging.getLogger(__name__)
-logger.debug(f"headers : {headers}")
+# logger.debug(f"headers : {headers}")
 
 executor1 = ThreadPoolExecutor(1)
 
@@ -553,15 +619,13 @@ if os.environ.get("OA_API_VERSION"):
     openai.api_version = os.environ["OA_API_VERSION"]
 
 
-# 環境変数からDOMAIN_NAMEを取得
-DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "localhost")
-LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
 
-# data download用の文言を取得する。
-DOWNLOAD_DATA_WORD = os.environ.get("DOWNLOAD_DATA_WORD", "")
 
-# redisのキーの蒸発時間を決める。基本30日
-EXPIRE_TIME = int(os.environ.get("EXPIRE_TIME", 24 * 3600 * 30))
+# CustomInstructionの最大トークン数
+CUSTOM_INSTRUCTION_MAX_TOKENS = int(os.environ.get("CUSTOM_INSTRUCTION_MAX_TOKENS", 0))
+
+# redisのキーの蒸発時間を決める。基本366日
+EXPIRE_TIME = int(os.environ.get("EXPIRE_TIME", 24 * 3600 * 366))
 
 #  アシスタントの警告メッセージ
 #  ユーザーに対して表示する警告メッセージを定義します。
@@ -591,7 +655,9 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
     json.loads(os.environ["TITLE_MODEL"]).items()
 )[0]
 
+# openai_api_costの計算用
 OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
+
 
 
 # %%
@@ -601,7 +667,7 @@ OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
 if "id" not in st.session_state:
     logger.debug("session initialized")
     st.session_state["id"] = "{}_{:0>20}".format(USER_ID, int(time.time_ns()))
-    #st.warning('not id')
+    # st.warning('not id')
 
     # もしUSER_IDに対応するモデルが設定されていない場合、最初の利用可能なモデルを設定
     if not redisCliUserSetting.hexists(USER_ID, "model"):
@@ -611,7 +677,18 @@ if "id" not in st.session_state:
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
     redisCliAccessTime.zremrangebyscore("access", "-inf", time.time() - EXPIRE_TIME)
 
+    # もしUSER_IDに対応するcustom instructionが設定されていない場合、''を設定
+    if not redisCliUserSetting.hexists(USER_ID, "custom_instruction"):
+        redisCliUserSetting.hset(USER_ID, "custom_instruction", "")
+        logger.debug('custom instruction set ""')
+if "custom_instruction" not in st.session_state:
+    st.session_state["custom_instruction"] = ""
+logger.debug(
+    f"st.session_state['custom_instruction'] : {st.session_state['custom_instruction'] }"
+)
 
+
+# USER_IDについてEXPIRE_TIMEを設定する。これにより最後にログインした時から１年間は消えない。
 redisCliUserSetting.expire(USER_ID, EXPIRE_TIME)
 redisCliUserAccess.expire(USER_ID, EXPIRE_TIME)
 redisCliTitleAtUser.expire(USER_ID, EXPIRE_TIME)
@@ -629,6 +706,7 @@ messages_id_within_today: List[bytes] = redisCliAccessTime.zrangebyscore(
     "access", today_midnight_unixtime, "+inf"
 )
 
+# 今日のコスト計算
 logger.debug(f"OPENAI_API_COST : {OPENAI_API_COST}")
 cost_team, cost_mine = 0, 0
 for message_id in messages_id_within_today:
@@ -642,14 +720,22 @@ for message_id in messages_id_within_today:
 
 st.title(MY_NAME + "さんとのチャット")
 
-
+# サイドボタン
+# logoutボタン
 if st.sidebar.button("Logout"):
     logout()
 
+# 今日の自分のコスト/今日のチームのコスト
 st.sidebar.markdown(
     f"<p style='font-size:20px; color:green;'>{cost_mine:.3f}/{cost_team:.3f}</p>",
     unsafe_allow_html=True,
 )
+
+# 設定ボタンを作る。設定画面に飛ぶ
+if st.sidebar.button("Settings"):
+    token = make_jwt_token({'user_id' : USER_ID}, expire_time=60)
+    jump_to_url(f"https://{DOMAIN_NAME}/setting", token=token)
+
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
 model: str = redisCliUserSetting.hget(USER_ID, "model").decode()
@@ -666,6 +752,7 @@ redisCliUserSetting.hset(
     ),  # 選択されたモデルを設定
 )
 INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
+
 
 # サイドバーに「New chat」ボタンを追加します。
 # ボタンがクリックされたときにアプリケーションを再実行します。
@@ -710,23 +797,18 @@ with st.chat_message("assistant"):
 
 # 以前のチャットログを表示
 for chat_encrypted in redisCliMessages.lrange(st.session_state["id"], 0, -1):
-    chat:dict = json.loads(cipher_suite.decrypt(chat_encrypted))
+    chat: dict = json.loads(cipher_suite.decrypt(chat_encrypted))
     with st.chat_message(chat["role"]):
         st.write(chat["content"])
 
 # ユーザー入力
 user_msg: str = st.chat_input("ここにメッセージを入力")
 
-if DOWNLOAD_DATA_WORD and user_msg == DOWNLOAD_DATA_WORD:
-    st.download_button(
-        label="Download Data",
-        data=io.BytesIO(get_chat_data_as_csv()),
-        file_name="chatdata.csv",
-        mime="text/csv",
-    )
+logger.debug(f"user_msg : {user_msg}(type : {type(user_msg)})")
+if not user_msg:
+    user_msg = ""
 
-# 処理開始
-elif user_msg:
+if user_msg:
 
     # logger.debug(f'session_id second : {st.session_state['id']}')
 
@@ -734,7 +816,9 @@ elif user_msg:
     with st.chat_message("user"):
         st.write(user_msg)
     new_messages: Dict[str, str] = {"role": "user", "content": user_msg}
-    new_messages_encrypted : bytes = cipher_suite.encrypt(json.dumps(new_messages).encode())
+    new_messages_encrypted: bytes = cipher_suite.encrypt(
+        json.dumps(new_messages).encode()
+    )
     redisCliMessages.rpush(st.session_state["id"], new_messages_encrypted)
     redisCliMessages.expire(st.session_state["id"], EXPIRE_TIME)
     error_flag = False
@@ -772,9 +856,11 @@ elif user_msg:
         # エラーが出たので今回のユーザーメッセージを削除する
         redisCliMessages.rpop(st.session_state["id"], 1)
     if not error_flag:
-        
-        encrypted_messages : str = cipher_suite.encrypt(json.dumps(trimed_messages).encode()).decode()
-        
+
+        encrypted_messages: str = cipher_suite.encrypt(
+            json.dumps(trimed_messages).encode()
+        ).decode()
+
         # 初回のmessages、つまりlen(messages)が1だったらタイトルを付ける。
         if len(messages) == 1:
             # タイトルを付ける処理をする。
@@ -809,42 +895,48 @@ elif user_msg:
         redisCliChatData.expire(messages_id, EXPIRE_TIME)
 
         #  アシスタントのメッセージを格納する辞書を初期化
-        assistant_messages:Dict[str,str] = {"role": "assistant", "content": ""}
+        assistant_messages: Dict[str, str] = {"role": "assistant", "content": ""}
         # roleも含まれたmessagesについても暗号化
-        assistant_messages_encrypted:bytes = cipher_suite.encrypt(json.dumps(assistant_messages).encode())
+        assistant_messages_encrypted: bytes = cipher_suite.encrypt(
+            json.dumps(assistant_messages).encode()
+        )
         #  セッションIDにアシスタントのメッセージを追加
         redisCliMessages.rpush(st.session_state["id"], assistant_messages_encrypted)
         #  セッションIDに関連するメッセージの長さを取得
         messages_length = redisCliMessages.llen(st.session_state["id"])
-        #logger.info(f"messages_length : {messages_length}")
+        # logger.info(f"messages_length : {messages_length}")
 
         #  アシスタントからのメッセージを表示するためのストリームを開始
         with st.chat_message("assistant"):
             #  アシスタントのメッセージを空文字列で初期化
-            assistant_msg:str = ""
+            assistant_msg: str = ""
             #  アシスタントのレスポンスを表示するためのエリアを作成
             assistant_response_area = st.empty()
             #  レスポンスのチャンクを逐次処理
             for chunk in response:
                 #  チャンクからアシスタントのメッセージを取得
-                tmp_assistant_msg:str = chunk["choices"][0]["delta"].get("content", "")
+                tmp_assistant_msg: str = chunk["choices"][0]["delta"].get("content", "")
                 #  アシスタントのメッセージにチャンクの内容を追加
                 assistant_msg += tmp_assistant_msg
                 # assistant_msgを暗号化
-                assistant_msg_encrypted:str = cipher_suite.encrypt(assistant_msg.encode()).decode()
-                
+                assistant_msg_encrypted: str = cipher_suite.encrypt(
+                    assistant_msg.encode()
+                ).decode()
+
                 #  アシスタントのメッセージを更新
                 assistant_messages["content"] = assistant_msg
                 # roleも含まれたmessagesについても暗号化
-                assistant_messages_encrypted:bytes = cipher_suite.encrypt(json.dumps(assistant_messages).encode())
-                
+                assistant_messages_encrypted: bytes = cipher_suite.encrypt(
+                    json.dumps(assistant_messages).encode()
+                )
+
                 #  セッションIDにアシスタントのメッセージを更新
                 redisCliMessages.lset(
                     st.session_state["id"],
                     messages_length - 1,
                     assistant_messages_encrypted,
                 )
-                #logger.info(f"redisCliMessages set : {messages_length - 1}")
+                # logger.info(f"redisCliMessages set : {messages_length - 1}")
                 #  メッセージIDにアシスタントのレスポンスを保存
                 redisCliChatData.hset(
                     messages_id,

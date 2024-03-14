@@ -1,11 +1,11 @@
 version: '3.2'
+
 services:
   apache:
     container_name: 'apache'
     build: 
-      context: ./docker/apache_docker/.
-      dockerfile: Dockerfile # ネットワーク利用時
-      #dockerfile: Dockerfile_local # ローカルで実験する際
+      context: ./apache/.
+      dockerfile: apache.dockerfile # ネットワーク利用時
       # build時に使う
       args:
         DOMAIN_NAME: ${DOMAIN_NAME} 
@@ -29,8 +29,8 @@ services:
   streamlit:
     container_name: 'streamlit'
     build: 
-      context: ./docker/streamlit_docker/.
-      dockerfile: Dockerfile
+      context: ./streamlit/.
+      dockerfile: streamlit.dockerfile
     env_file:
       - .env
     # コンテナ実行時に使用
@@ -41,21 +41,44 @@ services:
       - "8502:8502"
     expose:
       - "8501"
-    command: sh -c "streamlit run chat_openai0_28.py"
+    #command: sh -c "streamlit run chat_openai0_28.py"
     volumes:
       - ./data/streamlit_log:/root/log/  # log保存用
-      - ./docker/streamlit_docker:/root/docker/ # chat_openai0_28.pyアクセス用
+      - ./streamlit:/root/docker/ # chat_openai0_28.pyアクセス用
     restart: always
-    working_dir: '/root/docker/'
+    #working_dir: '/root/docker/'
 
   redis:
     container_name: 'redis'
     image: redis:latest
     expose:
       - "6379"
+    ports:
+      - "6379:6379"
     volumes:
       - ./data/redis_snapshot/:/data/ # snapshot保存用
-      - ./docker/redis_conf/:/usr/local/etc/redis/ # redis設定用
+      - ./redis/:/usr/local/etc/redis/ # redis設定用
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     restart: always
-
+  
+  flask:
+    container_name: 'flask'
+    build: 
+      context: ./flask/.
+      dockerfile: flask.dockerfile
+    volumes:
+      - ./flask/:/app
+    environment:
+      - 'TZ=Asia/Tokyo'
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPT_KEY=${ENCRYPT_KEY}
+    # コンテナ実行時に使用
+    ports:
+      - "5000:5000"
+    expose:
+      - "5000"
+    restart: always
+    #working_dir: '/root/app/'
+    #command: ["python", "app.py"]
+    
