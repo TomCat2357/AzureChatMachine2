@@ -27,16 +27,9 @@ def settings():
             user_id = decoded_token["user_id"]
                   
             custom_instruction_encrypted = redisCliUserSetting.hget(user_id, 'custom_instruction')
-            if custom_instruction_encrypted is None:
-                custom_instruction = ''
-            else:
-                custom_instruction = cipher_suite.decrypt(custom_instruction_encrypted).decode('utf-8')
+            custom_instruction = cipher_suite.decrypt(custom_instruction_encrypted).decode('utf-8')
             
-            use_custom_instruction_flag = redisCliUserSetting.hget(user_id, 'use_custom_instruction_flag')
-            if use_custom_instruction_flag is None:
-                use_custom_instruction_flag = 0
-            else:
-                use_custom_instruction_flag = int(use_custom_instruction_flag.decode())
+            use_custom_instruction_flag = redisCliUserSetting.hget(user_id, 'use_custom_instruction_flag').decode()
             return render_template('settings.html', custom_instruction=custom_instruction, user_id=user_id, use_custom_instruction_flag=use_custom_instruction_flag)
         except jwt.ExpiredSignatureError:
             # JWTの有効期限が切れている場合
@@ -54,9 +47,9 @@ def save_instruction():
     custom_instruction = request.form['custom_instruction']
     use_custom_instruction_flag = 'use_custom_instruction' in request.form
     if use_custom_instruction_flag:
-        use_custom_instruction_flag = 1
+        use_custom_instruction_flag = "True"
     else:
-        use_custom_instruction_flag = 0
+        use_custom_instruction_flag = ""
     custom_instruction_encrypted = cipher_suite.encrypt(custom_instruction.encode())
     redisCliUserSetting.hset(user_id, 'custom_instruction', custom_instruction_encrypted)
     redisCliUserSetting.hset(user_id, 'use_custom_instruction_flag', use_custom_instruction_flag)

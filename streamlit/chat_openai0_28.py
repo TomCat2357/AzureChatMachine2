@@ -2,16 +2,17 @@
 
 import streamlit as st
 from streamlit.web.server.websocket_headers import _get_websocket_headers
-import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime, hashlib,jwt
+import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime, hashlib, jwt, anthropic
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
 from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from cryptography.fernet import Fernet
-
-
-
+from typing import Iterable, Union, Literal, List
+from anthropic.types import MessageParam
+import httpx
+from anthropic import NOT_GIVEN
 hide_deploy_button_style = """
 <style>
 .stDeployButton {display:none;}
@@ -21,7 +22,10 @@ st.markdown(hide_deploy_button_style, unsafe_allow_html=True)
 
 
 def trim_tokens(
-    messages: List[dict], max_tokens: int, model: str = "gpt-3.5-turbo-0301"
+    messages: List[dict],
+    max_tokens: int,
+    encoding_name: str = "",
+    model: str = "gpt-3.5-turbo-0301",
 ) -> List[dict]:
     """
     メッセージのトークン数が指定した最大トークン数を超える場合、
@@ -38,7 +42,9 @@ def trim_tokens(
     # 無限ループを開始
     while True:
         # 現在のメッセージのトークン数を計算
-        total_tokens = calc_token_tiktoken(str(messages), model=model)
+        total_tokens = calc_token_tiktoken(
+            str(messages), encoding_name=encoding_name, model=model
+        )
         # トークン数が最大トークン数以下になった場合、ループを終了
         if total_tokens <= max_tokens:
             break
@@ -49,8 +55,9 @@ def trim_tokens(
     return messages
 
 
-def response_chatgpt(
-    messages: List[dict], model: str, stream: bool = True
+def response_chatmodel(
+    messages: List[dict], model: str, stream: bool = True,
+    max_tokens=512,
 ) -> Tuple[Generator, List[dict]]:
     """
     ChatGPTからのレスポンスを取得します。
@@ -69,7 +76,7 @@ def response_chatgpt(
     )
     # logger.debug(f"trim_tokens前のmessages_role: {type(messages)}")
 
-    trimed_messages: List[dict] = trim_tokens(messages, INPUT_MAX_TOKENS)
+    trimed_messages: List[dict] = trim_tokens(messages, INPUT_MAX_TOKENS, model=model)
     logger.debug(f"trim_tokens後のmessages: {str(messages)}")
     logger.debug(
         f"trim_tokens後のmessagesのトークン数: {calc_token_tiktoken(str(messages))}"
@@ -78,22 +85,33 @@ def response_chatgpt(
         logger.info(
             f"Sending request to OpenAI API with messages: {messages}, model : {model}"
         )
+        if model[:6] == "claude":
+            response = anthropic_message_function(
+                messages=trimed_messages,
+                client=anthropic_client,
+                model=model,
+                stream=stream,
+                max_tokens=max_tokens,
+            )
 
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=trimed_messages,
-            stream=stream,
-        )
+        else:
+            response = openai_message_function(
+                client=openai,
+                model=model,
+                messages=trimed_messages,
+                stream=stream,
+                max_tokens=max_tokens,
+            )
 
     except Exception as e:
         logger.error(f"Error while communicating with OpenAI API: {e}")
-        raise
+        raise Exception(e)
 
     return response, trimed_messages
 
 
 def calc_token_tiktoken(
-    chat: str, encoding_name: str = "", model: str = "gpt-3.5-turbo-0301"
+    chat: str, encoding_name: str = "", model: str = "claude-3-haiku-20240307"
 ) -> int:
     """
     # 引数の説明:
@@ -105,8 +123,13 @@ def calc_token_tiktoken(
     # model: 使用するAIモデルの名前。この引数は、特定のAIモデルに対応するエンコーディングを自動で選択するために使用されます。
     # 例えば 'gpt-3.5-turbo-0301' というモデル名を指定すれば、そのモデルに適したエンコーディングが選ばれます。
     # encoding_nameが指定されていない場合のみ、この引数が使用されます。
+    # modelが'claude'で始まる場合はanthropic.Anthropic.count_tokensが代わりに使われます。
     """
     chat = str(chat)
+
+    if model[:6] == "claude":
+        return anthropic_client.count_tokens(chat)
+
     # エンコーディングを決定する
     if encoding_name:
         # encoding_nameが指定されていれば、その名前でエンコーディングを取得する
@@ -206,7 +229,7 @@ def initialize_logger(user_id=""):
 
 # ユーザーのログイン処理を行う関数
 def login_check(login_time: float) -> None:
-    
+
     # ユーザーの最後のアクセスログを取得
     last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
 
@@ -235,7 +258,9 @@ def login_check(login_time: float) -> None:
         else:  # kind == "ACTION" or kind == "LOGIN"
             # 最後のログが現在時刻よりも新しい場合、エラーを発生させる
             if last_log_time > time.time() + 1:
-                raise Exception("今の時間よりも未来の時間に行動している記録があります。")
+                raise Exception(
+                    "今の時間よりも未来の時間に行動している記録があります。"
+                )
             # 最後のログから現在時刻までSESSION_TIMEOUT_PERIODを超えていたらログアウト処理
             if time.time() - last_log_time > SESSION_TIMEOUT_PERIOD:
                 logout()
@@ -243,24 +268,25 @@ def login_check(login_time: float) -> None:
             else:
                 now = time.time()
                 redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
-                redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
+                redisCliUserAccess.zadd(
+                    USER_ID, {f"LOGIN_{login_time*10**9}": login_time}
+                )
 
 
-
-def jump_to_url(url: str, token : str = ""):
+def jump_to_url(url: str, token: str = ""):
     if token:
         # トークンをクエリパラメータに追加
         url = f"{url}?token={token}"
-    else:    
+    else:
         url = f"{url}"
-    
+
     # JavaScriptを組み合わせて新しいタブで指定されたURLを開く
     js_open_new_tab = f"window.location.replace('{url}')"
     html = '<img src onerror="{}">'.format(js_open_new_tab)
     div = Div(text=html)
     st.bokeh_chart(div)
-    
-    
+
+
 def logout():
     now = time.time()
     # ログアウト時間をRedisに記録
@@ -270,8 +296,6 @@ def logout():
     # リダイレクト後にアプリケーションを再起動
     time.sleep(3)
     st.rerun()
-
-
 
 
 def record_title_at_user_redis(
@@ -323,16 +347,19 @@ def record_title_at_user_redis(
     #   タイトルの生成を試みるループです。
     while True:
         #   入力トークン数が最大トークン数を超えないかチェックします。
-        if INPUT_MAX_TOKENS >= calc_token_tiktoken(str(title_prompt)):
+        if INPUT_MAX_TOKENS >= calc_token_tiktoken(
+            str(title_prompt), model=TITLE_MODEL
+        ):
             break
         #   メッセージの内容を1文字削除します。
         title_prompt[0]["content"] = title_prompt[0]["content"][:-1]
 
     # ChatGPTからタイトルのレスポンスを取得します。
-    chat_response, title_prompt_trimed = response_chatgpt(
+    generated_title, title_prompt_trimed = response_chatmodel(
         title_prompt,
         model=TITLE_MODEL,
         stream=False,
+        max_tokens=32,
     )
 
     # promptを暗号化します。
@@ -341,7 +368,6 @@ def record_title_at_user_redis(
     ).decode()
 
     #   レスポンスからタイトルを取得します。
-    generated_title: str = chat_response["choices"][0]["message"].get("content", "")
     pattern_last_colon = r".*[:：](.*)$"
     washed_title = re.sub(pattern_last_colon, r"\1", generated_title)
     pattern_brackets = r'["「『](.+?)[」』"]'
@@ -367,7 +393,9 @@ def record_title_at_user_redis(
                 "USER_ID": USER_ID,
                 "messages": title_prompt_encrypted,
                 "timestamp": timestamp,
-                "num_tokens": calc_token_tiktoken(str(title_prompt_trimed)),
+                "num_tokens": calc_token_tiktoken(
+                    str(title_prompt_trimed), model=TITLE_MODEL
+                ),
                 "model": TITLE_MODEL,
             }
         ),
@@ -382,7 +410,7 @@ def record_title_at_user_redis(
                 "USER_ID": USER_ID,
                 "messages": encrypted_genarated_title_response,
                 "timestamp": timestamp,
-                "num_tokens": calc_token_tiktoken(generated_title),
+                "num_tokens": calc_token_tiktoken(generated_title, model=TITLE_MODEL),
                 "model": TITLE_MODEL,
             }
         ),
@@ -483,7 +511,7 @@ def get_chat_data_as_csv():
                     "timestamp": localtime,
                     # ここで ensure_ascii=False を設定
                     "messages": json.dumps(
-                       value_dict["messages"], ensure_ascii=False
+                        value_dict["messages"], ensure_ascii=False
                     ),  # 日本語がエスケープされずに出力される
                     "num_tokens": value_dict["num_tokens"],
                 }
@@ -509,15 +537,102 @@ def hash_string_md5_with_salt(input_string: str) -> str:
     # ハッシュを16進数の文字列として取得
     return md5_hash.hexdigest()
 
-def make_jwt_token(data : dict, expire_time : float = 60.0) -> str:
+
+def make_jwt_token(data: dict, expire_time: float = 60.0) -> str:
     now = time.time()
     expiration_time = now + expire_time
-    
-    data_with_exp = {**data, 'exp' : expiration_time}
+
+    data_with_exp = {**data, "exp": expiration_time}
     token = jwt.encode(data_with_exp, JWT_SECRET_KEY, algorithm="HS256")
     return token
-    
 
+
+def anthropic_message_function(
+    *,
+    client: anthropic.Anthropic,
+    max_tokens: int,
+    messages: Iterable[MessageParam],
+    model: Union[
+        str,
+        Literal[
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307",
+            "claude-2.1",
+            "claude-2.0",
+            "claude-instant-1.2",
+        ],
+    ],
+    metadata: dict = NOT_GIVEN,
+    stop_sequences: List[str]  = NOT_GIVEN,
+    stream: bool  = NOT_GIVEN,
+    system: str = NOT_GIVEN,
+    temperature: float  = NOT_GIVEN,
+    top_k: int  = NOT_GIVEN,
+    top_p: float  = NOT_GIVEN,
+    extra_headers: dict | None = None,
+    extra_query: dict | None = None,
+    extra_body: dict | None = None,
+    timeout: float | httpx.Timeout  = NOT_GIVEN,
+):
+    if stream:
+
+        def chat_stream():
+            with client.messages.stream(
+                max_tokens=max_tokens,
+                messages=messages,
+                model=model,
+                metadata=metadata,
+                stop_sequences=stop_sequences,
+                system=system,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+            ) as stream_response:
+                for text in stream_response.text_stream:
+                    yield text
+
+        return chat_stream()
+    else:
+        return client.messages.create(
+            max_tokens=max_tokens,
+            messages=messages,
+            model=model,
+            metadata=metadata,
+            stop_sequences=stop_sequences,
+            system=system,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            extra_headers=extra_headers,
+            extra_query=extra_query,
+            extra_body=extra_body,
+            timeout=timeout,
+        ).content[0].text
+
+def openai_message_function(*,
+                           client : openai,
+                           messages,
+                           model,
+                           max_tokens,
+                           stream):
+    if stream:
+        def chat_stream():
+            for text in client.ChatCompletion.create(messages=messages,
+                                                     model=model,
+                                                     max_tokens=max_tokens,
+                                                     stream=True):
+                yield text['choices'][0]["delta"].get("content", "")
+        return chat_stream()
+    else:        
+        return client.ChatCompletion.create(messages=messages,
+                                            model=model,
+                                            max_tokens=max_tokens,
+                                            stream=False)['choices'][0]['message']['content']
 
 # USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
 # session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
@@ -537,9 +652,8 @@ redisCliUserAccess = redis.Redis(host="redis", port=6379, db=4)
 redisCliChatData = redis.Redis(host="redis", port=6379, db=5)
 
 
-
 # JWTでの鍵
-JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
+JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 
 # メッセージを暗号化する鍵と暗号化インスタンス
 ENCRYPT_KEY = os.environ["ENCRYPT_KEY"].encode()
@@ -588,8 +702,13 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
     json.loads(os.environ["TITLE_MODEL"]).items()
 )[0]
 
-# openai_api_costの計算用
-OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
+# api_costの計算用
+API_COST = json.loads(os.environ["API_COST"])
+
+# responseのmax_tokens
+RESPONSE_MAX_TOKENS = int(os.environ['RESPONSE_MAX_TOKENS'])
+
+
 
 headers = _get_websocket_headers()
 if headers is None:
@@ -636,41 +755,17 @@ except Exception as e:
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
     st.session_state["logger_initialized"] = True
-    logger.info('logger initialized!!!')
+    logger.info("logger initialized!!!")
 else:
     logger = logging.getLogger(__name__)
-    logger.info('logger not initialized!!!')
-logger.info(f"headers : {headers}")
-logger.info(f"st.session_state : {st.session_state}")
+    logger.info("logger not initialized!!!")
+logger.debug(f"headers : {headers}")
+logger.debug(f"st.session_state : {st.session_state}")
 executor1 = ThreadPoolExecutor(1)
 
 login_check(login_time)
 
 
-
-# ユーザーの設定からカスタム指示フラグをRedisから取得します。
-use_custom_instruction_flag = redisCliUserSetting.hget(USER_ID, 'use_custom_instruction_flag')
-
-# フラグが設定されていない場合（None）は、デフォルトでFalse（0）に設定します。
-if use_custom_instruction_flag is None:
-    use_custom_instruction_flag = 0
-else:
-    # フラグが設定されている場合は、バイトから文字列にデコードします。
-    use_custom_instruction_flag = use_custom_instruction_flag.decode()
-
-# カスタム指示フラグがTrue（1）に設定されているかどうかを確認します。
-if use_custom_instruction_flag:
-    # フラグがTrueの場合、Redisから暗号化されたカスタム指示を取得します。
-    custom_instruction_encrypted :bytes= redisCliUserSetting.hget(USER_ID, 'custom_instruction')
-    # カスタム指示が設定されていない場合（None）は、指示を空文字列に設定します。
-    if custom_instruction_encrypted is None:
-        custom_instruction : str = ''
-    else:
-        # カスタム指示が設定されている場合は、復号化してバイトから文字列にデコードします。
-        custom_instruction : str = cipher_suite.decrypt(custom_instruction_encrypted).decode()
-else:
-    # フラグがFalse（0）に設定されている場合は、指示を空文字列に設定します。
-    custom_instruction : str = ''
 
 
 
@@ -686,11 +781,7 @@ if os.environ.get("OA_API_BASE"):
 if os.environ.get("OA_API_VERSION"):
     openai.api_version = os.environ["OA_API_VERSION"]
 
-
-
-
-
-
+anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 
 # %%
@@ -708,17 +799,17 @@ if "id" not in st.session_state:
     # もしUSER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
     if redisCliUserSetting.hget(USER_ID, "model").decode() not in AVAILABLE_MODELS:
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
+    # accesstimeのEXPIRE_TIMEよりも古いものは消す
     redisCliAccessTime.zremrangebyscore("access", "-inf", time.time() - EXPIRE_TIME)
 
     # もしUSER_IDに対応するcustom instructionが設定されていない場合、''を設定
     if not redisCliUserSetting.hexists(USER_ID, "custom_instruction"):
-        redisCliUserSetting.hset(USER_ID, "custom_instruction", "")
-        logger.debug('custom instruction set ""')
-if "custom_instruction" not in st.session_state:
-    st.session_state["custom_instruction"] = ""
-logger.debug(
-    f"st.session_state['custom_instruction'] : {st.session_state['custom_instruction'] }"
-)
+        redisCliUserSetting.hset(USER_ID, "custom_instruction", 
+                                 cipher_suite.encrypt(b""))
+    # もしUSER_IDに対応するuse_custom_instruction_flagが設定されていない場合、""を設定
+    if not redisCliUserSetting.hexists(USER_ID, "use_custom_instruction_flag"):
+        redisCliUserSetting.hset(USER_ID, "use_custom_instruction_flag","")
+    
 
 
 # USER_IDについてEXPIRE_TIMEを設定する。これにより最後にログインした時から１年間は消えない。
@@ -738,19 +829,27 @@ today_midnight_unixtime = int(today_midnight.timestamp())
 messages_id_within_today: List[bytes] = redisCliAccessTime.zrangebyscore(
     "access", today_midnight_unixtime, "+inf"
 )
+logger.debug('Now model : ')
 
 # 今日のコスト計算
-logger.debug(f"OPENAI_API_COST : {OPENAI_API_COST}")
+
 cost_team, cost_mine = 0, 0
 for message_id in messages_id_within_today:
     for kind, data in redisCliChatData.hgetall(message_id).items():
         data = json.loads(data)
         # logger.debug(f'data : {data}')
         key = kind.decode() + "_" + data["model"]
-        cost_team += OPENAI_API_COST[key]
+        try:
+            cost_team += API_COST[key]
+        except KeyError:
+            logger.error(f'{key} is not in available model!')
+            
         if data.get("USER_ID") == USER_ID:
-            cost_mine += OPENAI_API_COST[key]
-
+            try:
+                cost_mine += API_COST[key]
+            except KeyError:
+                pass
+ 
 st.title(MY_NAME + "さんとのチャット")
 
 # サイドボタン
@@ -766,7 +865,7 @@ st.sidebar.markdown(
 
 # 設定ボタンを作る。設定画面に飛ぶ
 if st.sidebar.button("Settings"):
-    token = make_jwt_token({'user_id' : USER_ID}, expire_time=60)
+    token = make_jwt_token({"user_id": USER_ID}, expire_time=60)
     jump_to_url(f"https://{DOMAIN_NAME}/settings", token=token)
 
 
@@ -785,6 +884,7 @@ redisCliUserSetting.hset(
     ),  # 選択されたモデルを設定
 )
 INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
+
 
 
 # サイドバーに「New chat」ボタンを追加します。
@@ -834,7 +934,6 @@ for chat_encrypted in redisCliMessages.lrange(st.session_state["id"], 0, -1):
     with st.chat_message(chat["role"]):
         st.write(chat["content"])
 
-logger.debug(f'custom_instruction : {custom_instruction}')
 
 # ユーザー入力
 user_msg: str = st.chat_input("ここにメッセージを入力")
@@ -860,7 +959,7 @@ if user_msg:
     try:
         now: float = time.time()
         # 入力メッセージのトークン数を計算
-        user_msg_tokens: int = calc_token_tiktoken(str([new_messages]))
+        user_msg_tokens: int = calc_token_tiktoken(str([new_messages]), model=model)
         logger.debug(f"入力メッセージのトークン数: {user_msg_tokens}")
         if user_msg_tokens > INPUT_MAX_TOKENS:
             raise Exception(
@@ -880,10 +979,11 @@ if user_msg:
             json.loads(cipher_suite.decrypt(mes))
             for mes in redisCliMessages.lrange(st.session_state["id"], 0, -1)
         ]
-        response, trimed_messages = response_chatgpt(
+        response, trimed_messages = response_chatmodel(
             messages,
             model=model,
             stream=True,
+            max_tokens=RESPONSE_MAX_TOKENS,
         )
     except Exception as e:
         error_flag = True
@@ -922,7 +1022,7 @@ if user_msg:
                     "timestamp": now,  #  メッセージのタイムスタンプ
                     "messages": encrypted_messages,  #  トリムされ暗号化されたメッセージのリスト
                     "num_tokens": calc_token_tiktoken(
-                        str(trimed_messages)
+                        str(trimed_messages), model=model
                     ),  #  トリムされたメッセージのトークン数
                 }
             ),
@@ -949,10 +1049,8 @@ if user_msg:
             assistant_response_area = st.empty()
             #  レスポンスのチャンクを逐次処理
             for chunk in response:
-                #  チャンクからアシスタントのメッセージを取得
-                tmp_assistant_msg: str = chunk["choices"][0]["delta"].get("content", "")
                 #  アシスタントのメッセージにチャンクの内容を追加
-                assistant_msg += tmp_assistant_msg
+                assistant_msg += chunk
                 # assistant_msgを暗号化
                 assistant_msg_encrypted: str = cipher_suite.encrypt(
                     assistant_msg.encode()
@@ -983,7 +1081,7 @@ if user_msg:
                             "timestamp": now,  #   メッセージのタイムスタンプ
                             "messages": assistant_msg_encrypted,  #   トリムされたメッセージのリスト
                             "num_tokens": calc_token_tiktoken(
-                                assistant_msg
+                                assistant_msg, model=model
                             ),  #   トリムされたメッセージのトークン数
                         }
                     ),

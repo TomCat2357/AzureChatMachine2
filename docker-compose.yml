@@ -41,12 +41,11 @@ services:
       - "8502:8502"
     expose:
       - "8501"
-    #command: sh -c "streamlit run chat_openai0_28.py"
     volumes:
       - ./data/streamlit_log:/root/log/  # log保存用
       - ./streamlit:/root/docker/ # chat_openai0_28.pyアクセス用
     restart: always
-    #working_dir: '/root/docker/'
+
 
   redis:
     container_name: 'redis'
@@ -79,6 +78,3 @@ services:
     expose:
       - "5000"
     restart: always
-    #working_dir: '/root/app/'
-    #command: ["python", "app.py"]
-    
