@@ -17,6 +17,13 @@ RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
 ARG DOMAIN_NAME
 ENV DOMAIN_NAME=${DOMAIN_NAME}
 
+# 自己署名証明書を作る
+#RUN mkdir -p /etc/letsencrypt/live/${DOMAIN_NAME} && \
+#    openssl genrsa -out /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem 2048 && \
+#    openssl req -new -key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -subj "/CN=${DOMAIN_NAME}" && \
+#    openssl x509 -req -days 365 -in /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -signkey /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
+
+
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
@@ -36,14 +43,22 @@ RUN { \
      echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
      echo '    RewriteCond %{HTTP:Connection} upgrade [NC]'; \
      echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]'; \
-     echo '    ProxyPass /chat http://streamlit:8501/'; \
-     echo '    ProxyPassReverse /chat http://streamlit:8501/'; \
+     echo '    ProxyPass / http://streamlit:8501/'; \
+     echo '    ProxyPassReverse / http://streamlit:8501/'; \
      echo '    <Location /settings>'; \
      echo '        RewriteEngine On'; \
-     echo '        RewriteCond %{HTTP_REFERER} !^https://${DOMAIN_NAME}/chat'; \
+     echo '        RewriteCond %{HTTP_REFERER} !^https://${DOMAIN_NAME}'; \
      echo '        RewriteRule ^ - [F]'; \
-     echo '        ProxyPass http://flask:5000/'; \
-     echo '        ProxyPassReverse http://flask:5000/'; \
+     echo '        ProxyPass http://flask:5000/f_settings'; \
+     echo '        ProxyPassReverse http://flask:5000/f_settings'; \
+     echo '    </Location>'; \
+     echo '    <Location /save>'; \
+     echo '        ProxyPass http://flask:5000/f_save'; \
+     echo '        ProxyPassReverse http://flask:5000/f_save'; \
+     echo '    </Location>'; \
+     echo '    <Location /back>'; \
+     echo '        ProxyPass http://flask:5000/f_back'; \
+     echo '        ProxyPassReverse http://flask:5000/f_back'; \
      echo '    </Location>'; \
      echo '</VirtualHost>'; \
      echo '</IfModule>'; \
@@ -52,27 +67,27 @@ RUN { \
 
 
 # ServerName DOMAIN_NAMEの追記
-RUN { \
-    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
-    echo "ServerName \${DOMAIN_NAME}"; \
-    echo "OIDCProviderMetadataURL https://login.microsoftonline.com/\${TENANT_ID}/v2.0/.well-known/openid-configuration"; \
-    echo "OIDCClientID \${CLIENT_ID}"; \
-    echo "OIDCClientSecret \${CLIENT_SECRET}"; \
-    echo "OIDCRedirectURI https://\${DOMAIN_NAME}/auth"; \
-    echo "OIDCCryptoPassphrase \${PASSPHRASE}"; \
-    echo "<Location />"; \
-    echo "    AuthType openid-connect"; \
-    echo "    Require valid-user"; \
-    echo "</Location>"; \
-} >> /etc/apache2/apache2.conf
+#RUN { \
+#    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
+#    echo "ServerName \${DOMAIN_NAME}"; \
+#    echo "OIDCProviderMetadataURL https://login.microsoftonline.com/\${TENANT_ID}/v2.0/.well-known/openid-configuration"; \
+#    echo "OIDCClientID \${CLIENT_ID}"; \
+#    echo "OIDCClientSecret \${CLIENT_SECRET}"; \
+#    echo "OIDCRedirectURI https://\${DOMAIN_NAME}/auth"; \
+#    echo "OIDCCryptoPassphrase \${PASSPHRASE}"; \
+#    echo "<Location />"; \
+#    echo "    AuthType openid-connect"; \
+#    echo "    Require valid-user"; \
+#    echo "</Location>"; \
+#} >> /etc/apache2/apache2.conf
 
 # ログアウト用の設定を追加
 RUN { \
-    echo "<Location /logout>"; \
-    echo "    AuthType openid-connect"; \
-    echo "    OIDCUnAuthAction 401"; \
-    echo "    RedirectMatch 302 ^/logout$ https://login.microsoftonline.com/\${TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://www.google.com/"; \
-    echo "</Location>"; \
+   echo "<Location /logout>"; \
+   echo "    AuthType openid-connect"; \
+   echo "    OIDCUnAuthAction 401"; \
+   echo "    RedirectMatch 302 ^/logout$ https://login.microsoftonline.com/\${TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://www.google.com/"; \
+   echo "</Location>"; \
 } >> /etc/apache2/apache2.conf
 
 
@@ -86,9 +101,9 @@ RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'a
 # 初期設定用のスクリプトを作成し、実行権限を付与
 RUN echo '#!/bin/bash'"\n"\
 '# Certbotの設定'"\n"\
-'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect'"\n"\
+#'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect'"\n"\
 '# cronデーモンの起動'"\n"\
-'cron'"\n"\
+#'cron'"\n"\
 '# Apacheが既に実行中かどうかを確認'"\n"\
 'if ! pidof apache2 > /dev/null; then'"\n"\
 '    echo "Starting Apache..."'"\n"\

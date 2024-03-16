@@ -1,16 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Custom Instruction Settings</title>
+   <title>Custom Instruction Settings</title>
 </head>
 <body>
-    <h1>Custom Instruction Settings</h1>
-    <form action="/save_instruction" method="POST">
-        <label for="custom_instruction">Custom Instruction:</label><br>
-        <textarea id="custom_instruction" name="custom_instruction" rows="5" cols="50">{{ custom_instruction }}</textarea><br>
-        <input type="hidden" name="user_id" value="{{ user_id }}">
-        <input type="submit" value="Save">
-        <a href="https://{{ domain_name }}/chat"><button type="button">Back</button></a>
-    </form>
+   <h1>Custom Instruction Settings</h1>
+   <form action="/save" method="POST">
+       <label for="custom_instruction">Custom Instruction:</label><br>
+       <textarea id="custom_instruction" name="custom_instruction" rows="5" cols="50">{{ custom_instruction }}</textarea><br>
+       <input type="checkbox" id="use_custom_instruction" name="use_custom_instruction" {% if use_custom_instruction_flag %}checked{% endif %}>
+       <label for="use_custom_instruction">Use custom instruction</label><br>
+       <input type="hidden" name="user_id" value="{{ user_id }}">
+       <input type="submit" value="Save">
+   </form>
+   <form action="/back" method="POST">
+       <input type="hidden" name="user_id" value="{{ user_id }}">
+       <input type="submit" value="Back">
+   </form>
 </body>
 </html>

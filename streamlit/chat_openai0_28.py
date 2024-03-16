@@ -206,8 +206,7 @@ def initialize_logger(user_id=""):
 
 # ユーザーのログイン処理を行う関数
 def login_check(login_time: float) -> None:
-    now = time.time()
-
+    
     # ユーザーの最後のアクセスログを取得
     last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
 
@@ -235,13 +234,14 @@ def login_check(login_time: float) -> None:
         # kindが"ACTION"か"LOGIN"の場合
         else:  # kind == "ACTION" or kind == "LOGIN"
             # 最後のログが現在時刻よりも新しい場合、エラーを発生させる
-            if last_log_time > now:
+            if last_log_time > time.time() + 1:
                 raise Exception("今の時間よりも未来の時間に行動している記録があります。")
             # 最後のログから現在時刻までSESSION_TIMEOUT_PERIODを超えていたらログアウト処理
-            if now - last_log_time > SESSION_TIMEOUT_PERIOD:
+            if time.time() - last_log_time > SESSION_TIMEOUT_PERIOD:
                 logout()
             # そうではない場合、活動時間とログイン時間を更新する。
             else:
+                now = time.time()
                 redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
                 redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
 
@@ -536,6 +536,8 @@ redisCliUserAccess = redis.Redis(host="redis", port=6379, db=4)
 # redisCliChatData : messages_idと'prompt'か'response'の別で、messages、トークン数、timestamp及びモデル名を管理。構造{messages_id: {kind('send' or 'accept') : {'model' : mode, 'title' : title(str), 'timestamp' : timestamp, 'messages' : messages(List[dict]), 'num_tokens' : num_tokens(int)}
 redisCliChatData = redis.Redis(host="redis", port=6379, db=5)
 
+
+
 # JWTでの鍵
 JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
 
@@ -551,6 +553,43 @@ SESSION_TIMEOUT_PERIOD = int(os.environ.get("SESSION_TIMEOUT_PERIOD", 3600))
 # 環境変数からDOMAIN_NAMEを取得
 DOMAIN_NAME = os.environ.get("DOMAIN_NAME", "localhost")
 LOGOUT_URL = f"https://{DOMAIN_NAME}/logout"
+
+# CustomInstructionの最大トークン数
+CUSTOM_INSTRUCTION_MAX_TOKENS = int(os.environ.get("CUSTOM_INSTRUCTION_MAX_TOKENS", 0))
+
+# redisのキーの蒸発時間を決める。基本366日
+EXPIRE_TIME = int(os.environ.get("EXPIRE_TIME", 24 * 3600 * 366))
+
+#  アシスタントの警告メッセージ
+#  ユーザーに対して表示する警告メッセージを定義します。
+ASSISTANT_WARNING = "注意：私はAIチャットボットで、情報が常に最新または正確であるとは限りません。重要な決定をする前には、他の信頼できる情報源を確認してください。"
+
+#  利用可能なGPTモデルのリスト
+# 環境変数から利用可能なGPTモデルのリストをJSON形式で取得し、辞書として定義します。
+AVAILABLE_MODELS: dict[str, int] = json.loads(os.environ["AVAILABLE_MODELS"])
+
+#  レート制限の設定
+# 環境変数からレート制限の設定をJSON形式で取得し、辞書として定義します。
+LATE_LIMIT: dict = json.loads(os.environ["LATE_LIMIT"])
+
+#  レート制限のカウント
+#  レート制限の設定からカウントを取得し、整数として定義します。
+LATE_LIMIT_COUNT: int = LATE_LIMIT["COUNT"]
+
+#  レート制限の期間
+#  レート制限の設定から期間を取得し、浮動小数点数として定義します。
+LATE_LIMIT_PERIOD: float = LATE_LIMIT["PERIOD"]
+
+#  タイトル生成モデルの設定
+# 環境変数からタイトル生成モデルの設定をJSON形式で取得し、タプルとして定義します。
+TITLE_MODEL: str
+TITLE_MODEL_CHAR_MAX_LENGTH: int
+TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
+    json.loads(os.environ["TITLE_MODEL"]).items()
+)[0]
+
+# openai_api_costの計算用
+OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
 
 headers = _get_websocket_headers()
 if headers is None:
@@ -592,18 +631,47 @@ except Exception as e:
 #    mime="application/json",
 # )
 # Streamlitのsession_stateを使ってロガーが初期化されたかどうかをチェック
+
+
 if "logger_initialized" not in st.session_state:
     logger = initialize_logger(USER_ID)
     st.session_state["logger_initialized"] = True
+    logger.info('logger initialized!!!')
 else:
     logger = logging.getLogger(__name__)
-# logger.debug(f"headers : {headers}")
-
+    logger.info('logger not initialized!!!')
+logger.info(f"headers : {headers}")
+logger.info(f"st.session_state : {st.session_state}")
 executor1 = ThreadPoolExecutor(1)
 
 login_check(login_time)
 
-# 定数定義
+
+
+# ユーザーの設定からカスタム指示フラグをRedisから取得します。
+use_custom_instruction_flag = redisCliUserSetting.hget(USER_ID, 'use_custom_instruction_flag')
+
+# フラグが設定されていない場合（None）は、デフォルトでFalse（0）に設定します。
+if use_custom_instruction_flag is None:
+    use_custom_instruction_flag = 0
+else:
+    # フラグが設定されている場合は、バイトから文字列にデコードします。
+    use_custom_instruction_flag = use_custom_instruction_flag.decode()
+
+# カスタム指示フラグがTrue（1）に設定されているかどうかを確認します。
+if use_custom_instruction_flag:
+    # フラグがTrueの場合、Redisから暗号化されたカスタム指示を取得します。
+    custom_instruction_encrypted :bytes= redisCliUserSetting.hget(USER_ID, 'custom_instruction')
+    # カスタム指示が設定されていない場合（None）は、指示を空文字列に設定します。
+    if custom_instruction_encrypted is None:
+        custom_instruction : str = ''
+    else:
+        # カスタム指示が設定されている場合は、復号化してバイトから文字列にデコードします。
+        custom_instruction : str = cipher_suite.decrypt(custom_instruction_encrypted).decode()
+else:
+    # フラグがFalse（0）に設定されている場合は、指示を空文字列に設定します。
+    custom_instruction : str = ''
+
 
 
 # APIキーの設定
@@ -621,42 +689,7 @@ if os.environ.get("OA_API_VERSION"):
 
 
 
-# CustomInstructionの最大トークン数
-CUSTOM_INSTRUCTION_MAX_TOKENS = int(os.environ.get("CUSTOM_INSTRUCTION_MAX_TOKENS", 0))
 
-# redisのキーの蒸発時間を決める。基本366日
-EXPIRE_TIME = int(os.environ.get("EXPIRE_TIME", 24 * 3600 * 366))
-
-#  アシスタントの警告メッセージ
-#  ユーザーに対して表示する警告メッセージを定義します。
-ASSISTANT_WARNING = "注意：私はAIチャットボットで、情報が常に最新または正確であるとは限りません。重要な決定をする前には、他の信頼できる情報源を確認してください。"
-
-#  利用可能なGPTモデルのリスト
-# 環境変数から利用可能なGPTモデルのリストをJSON形式で取得し、辞書として定義します。
-AVAILABLE_MODELS: dict[str, int] = json.loads(os.environ["AVAILABLE_MODELS"])
-
-#  レート制限の設定
-# 環境変数からレート制限の設定をJSON形式で取得し、辞書として定義します。
-LATE_LIMIT: dict = json.loads(os.environ["LATE_LIMIT"])
-
-#  レート制限のカウント
-#  レート制限の設定からカウントを取得し、整数として定義します。
-LATE_LIMIT_COUNT: int = LATE_LIMIT["COUNT"]
-
-#  レート制限の期間
-#  レート制限の設定から期間を取得し、浮動小数点数として定義します。
-LATE_LIMIT_PERIOD: float = LATE_LIMIT["PERIOD"]
-
-#  タイトル生成モデルの設定
-# 環境変数からタイトル生成モデルの設定をJSON形式で取得し、タプルとして定義します。
-TITLE_MODEL: str
-TITLE_MODEL_CHAR_MAX_LENGTH: int
-TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
-    json.loads(os.environ["TITLE_MODEL"]).items()
-)[0]
-
-# openai_api_costの計算用
-OPENAI_API_COST = json.loads(os.environ["OA_API_COST"])
 
 
 
@@ -734,7 +767,7 @@ st.sidebar.markdown(
 # 設定ボタンを作る。設定画面に飛ぶ
 if st.sidebar.button("Settings"):
     token = make_jwt_token({'user_id' : USER_ID}, expire_time=60)
-    jump_to_url(f"https://{DOMAIN_NAME}/setting", token=token)
+    jump_to_url(f"https://{DOMAIN_NAME}/settings", token=token)
 
 
 # Streamlitのサイドバーに利用可能なGPTモデルを選択するためのドロップダウンメニューを追加
@@ -800,6 +833,8 @@ for chat_encrypted in redisCliMessages.lrange(st.session_state["id"], 0, -1):
     chat: dict = json.loads(cipher_suite.decrypt(chat_encrypted))
     with st.chat_message(chat["role"]):
         st.write(chat["content"])
+
+logger.debug(f'custom_instruction : {custom_instruction}')
 
 # ユーザー入力
 user_msg: str = st.chat_input("ここにメッセージを入力")
