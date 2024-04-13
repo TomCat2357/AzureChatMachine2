@@ -5,14 +5,14 @@ from streamlit.web.server.websocket_headers import _get_websocket_headers
 import pytz, re, logging, csv, io, openai, os, redis, time, json, tiktoken, datetime, hashlib, jwt, anthropic
 from logging.handlers import TimedRotatingFileHandler
 from bokeh.models.widgets import Div
-from typing import Tuple, Set, Any, List, Generator, Iterable, Dict
+from typing import Union, Literal, Tuple, Set, Any, List, Generator, Iterable, Dict
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from cryptography.fernet import Fernet
-from typing import Iterable, Union, Literal, List
 from anthropic.types import MessageParam
-import httpx
-from anthropic import NOT_GIVEN
+import httpx, traceback
+from anthropic import NOT_GIVEN, Anthropic
+
 hide_deploy_button_style = """
 <style>
 .stDeployButton {display:none;}
@@ -50,24 +50,34 @@ def trim_tokens(
             break
         # トークン数が最大トークン数を超えている場合、メッセージの先頭を削除
         messages.pop(0)
+        
+        # messagesの長さが0になったらエラー
+        if len(messages) == 0:
+            raise ValueError("与えられたmessageはmax_tokens以下になりません。")
+        
 
     # 修正されたメッセージ���リストを返す
     return messages
 
 
 def response_chatmodel(
-    messages: List[dict], model: str, stream: bool = True,
-    max_tokens=512,
+    messages: List[dict],
+    model: str,
+    stream: bool,
+    max_tokens: int,
+    custom_instruction: str = "",
 ) -> Tuple[Generator, List[dict]]:
     """
-    ChatGPTからのレスポンスを取得します。
+    指定されたモデル(OpenAIまたはAnthropic)からのレスポンスを取得します。
 
     引数:
-        messages (List[dict]): 過去のメッセージとユーザーのメッセージが入ったリストユーザーからのメッセージ。
-        model (str): 使用するChatGPTのモデル名。
-        stream(bool): ストリーム処理するか。デフォルトはTrue
+        messages (List[dict]): 過去のメッセージとユーザーのメッセージが入ったリスト。
+        model (str): 使用するモデル名。
+        stream (bool): ストリーム処理するか。
+        max_tokens (int): 生成するトークンの最大数。
     戻り値:
-        response: ChatGPTからのレスポンス。
+        response: モデルからのレスポンス。
+        trimed_messages: トークン数を調整した後のメッセージリスト。
     """
     # logger.debug(role(user_msg))
     logger.debug(f"trim_tokens前のmessages: {messages}")
@@ -75,12 +85,19 @@ def response_chatmodel(
         f"trim_tokens前のmessagesのトークン数: {calc_token_tiktoken(str(messages))}"
     )
     # logger.debug(f"trim_tokens前のmessages_role: {type(messages)}")
+    # 設定により、custorm_instructionを必要ならば付加する。
+    if custom_instruction:
+        messages[-1]["content"] = custom_instruction + "\n" + messages[-1]["content"]
+        logger.debug(f"custom_instruction付加後のmessages: {messages}")
+        logger.debug(
+            f"custom_instruction付加後のmessagesのmessagesのトークン数: {calc_token_tiktoken(str(messages))}")
 
     trimed_messages: List[dict] = trim_tokens(messages, INPUT_MAX_TOKENS, model=model)
     logger.debug(f"trim_tokens後のmessages: {str(messages)}")
     logger.debug(
         f"trim_tokens後のmessagesのトークン数: {calc_token_tiktoken(str(messages))}"
     )
+
     try:
         logger.info(
             f"Sending request to OpenAI API with messages: {messages}, model : {model}"
@@ -184,15 +201,61 @@ def check_rate_limit_exceed(
 
 
 def initialize_logger(user_id=""):
+    """
+    ロガーを初期化し、ユーザーIDに基づいてカスタムロガーを返します。
+
+    引数:
+        user_id (str): ユーザーID。デフォルトは空の文字列。
+
+    戻り値:
+        logger: ユーザーIDが指定された場合はカスタムロガー、そうでない場合は通常のロガー。
+
+    この関数は以下の処理を行います:
+    1. ロガーオブジェクトを取得または作成します。
+    2. ロガーのレベルをDEBUGに設定します。
+    3. ログメッセージのフォーマットを設定します。
+    4. コンソールへのハンドラを作成し、ロガーに追加します。
+    5. ファイルへのハンドラを作成し、ロガーに追加します。
+       - ファイルハンドラは日付ごとにログファイルをローテーションします。
+       - ログファイルは7日分保持されます。
+    6. ユーザーIDが指定された場合:
+       - カスタムロガークラスを定義します。
+       - カスタムロガークラスはユーザーIDをログメッセージに追加します。
+       - カスタムロガーオブジェクトを返します。
+    7. ユーザーIDが指定されない場合:
+       - 通常のロガーオブジェクトを返します。
+    """
+
     class CustomLogger(logging.LoggerAdapter):
+        """
+        カスタムロガークラス。
+        ユーザーIDをログメッセージに追加します。
+        """
+
         def __init__(self, logger, user_id):
+            """
+            カスタムロガーを初期化します。
+
+            引数:
+                logger: 元となるロガーオブジェクト。
+                user_id (str): ユーザーID。
+            """
             super().__init__(logger, {})
             self.user_id = user_id
 
         def process(self, msg, kwargs):
+            """
+            ログメッセージを処理し、ユーザーIDを追加します。
+
+            引数:
+                msg (str): ログメッセージ。
+                kwargs (dict): ログメッセージに関連する追加情報。
+
+            戻り値:
+                tuple: ユーザーIDを追加したログメッセージと追加情報。
+            """
             return f"{self.user_id} - {msg}", kwargs
 
-    # ロガーを初期化する関数
     # ロガーオブジェクトを取得または作成します
     logger = logging.getLogger(__name__)
     # ロガーのレベルをDEBUGに設定します
@@ -221,59 +284,80 @@ def initialize_logger(user_id=""):
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
+    # ユーザーIDが指定された場合、カスタムロガーを返します
     if user_id:
         return CustomLogger(logger, user_id)
+    # ユーザーIDが指定されない場合、通常のロガーを返します
     else:
         return logger
 
 
 # ユーザーのログイン処理を行う関数
 def login_check(login_time: float) -> None:
+    """
+    ユーザーのログイン状態を確認し、必要に応じてログイン・ログアウト処理を行う関数。
 
+    引数:
+        login_time (float): ユーザーがログインした時間（UNIX時間）。
+
+    処理の流れ:
+    1. ユーザーの最後のアクセスログを取得する。
+    2. 最後のアクセスログが存在しない場合、ログイン時間を登録する。
+    3. 最後のアクセスログが存在する場合:
+       - 最後のアクセスログの種類と時間を取得する。
+       - 最後のアクセスログの種類が "LOGOUT" の場合:
+         - login_timeがLOGOUT時間よりも古い場合は、ログアウト処理を行う。
+         - login_timeがLOGOUT時間よりも新しい場合は、ログイン処理を行う。
+       - 最後のアクセスログの種類が "ACTION" または "LOGIN" の場合:
+         - 最後のアクセスログの時間が現在時刻よりも未来の場合、エラーを発生させる。
+         - 最後のアクセスログから現在時刻までSESSION_TIMEOUT_PERIODを超えていた場合、ログアウト処理を行う。
+         - そうでない場合、活動時間とログイン時間を更新する。
+    """
     # ユーザーの最後のアクセスログを取得
     last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
 
     # 最後のアクセスログが存在しない場合、ログイン時間を登録
-    if not last_access_log:
-        redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
-    else:
-        # 最後のアクセスログの種類と時間を取得
-        kind: str = last_access_log[0][0].decode().split("_")[0]
-        last_log_time: float = last_access_log[0][1]
+    redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
+    # 最後のアクセスログの種類と時間を取得
+    kind: str = last_access_log[0][0].decode().split("_")[0]
+    last_log_time: float = last_access_log[0][1]
 
-        # 最新のログがLOGOUTの場合
-        if kind == "LOGOUT":
-            # login_timeがLOGOUT時間よりも古い場合は、ログアウト処理
-            if last_log_time >= login_time:
-                st.warning("ログアウトされました。ブラウザを閉じてください")
-                time.sleep(3)
-                st.rerun()
-            # login_timeの方が新しい場合は、ログイン処理
-            else:
-                redisCliUserAccess.zadd(
-                    USER_ID, {f"LOGIN_{login_time*10**9}": login_time}
-                )
+    # 最後のアクセスログの種類が "LOGOUT" の場合
+    if kind == "LOGOUT":
+        # login_timeがLOGOUT時間よりも古い場合は、ログアウト処理を行う
+        if last_log_time >= login_time:
+            st.warning("ログアウトされました。ブラウザを閉じてください")
+            time.sleep(3)
+            st.rerun()
+        # login_timeがLOGOUT時間よりも新しい場合は、ログイン処理を行う
 
-        # kindが"ACTION"か"LOGIN"の場合
-        else:  # kind == "ACTION" or kind == "LOGIN"
-            # 最後のログが現在時刻よりも新しい場合、エラーを発生させる
-            if last_log_time > time.time() + 1:
-                raise Exception(
-                    "今の時間よりも未来の時間に行動している記録があります。"
-                )
-            # 最後のログから現在時刻までSESSION_TIMEOUT_PERIODを超えていたらログアウト処理
-            if time.time() - last_log_time > SESSION_TIMEOUT_PERIOD:
-                logout()
-            # そうではない場合、活動時間とログイン時間を更新する。
-            else:
-                now = time.time()
-                redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
-                redisCliUserAccess.zadd(
-                    USER_ID, {f"LOGIN_{login_time*10**9}": login_time}
-                )
+    # 最後のアクセスログの種類が "ACTION" または "LOGIN" の場合
+    else:  # kind == "ACTION" or kind == "LOGIN"
+        # 最後のアクセスログの時間が現在時刻よりも未来の場合、エラーを発生させる
+        if last_log_time > time.time() + 1:
+            raise Exception("現在時刻よりも未来の時間の行動記録があります。")
+        # 最後のアクセスログから現在時刻までSESSION_TIMEOUT_PERIODを超えていた場合、ログアウト処理を行う
+        if time.time() - last_log_time > SESSION_TIMEOUT_PERIOD:
+            logout()
+        # そうでない場合、活動時間とログイン時間を更新する
+        else:
+            now = time.time()
+            redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
 
 
 def jump_to_url(url: str, token: str = ""):
+    """
+    指定されたURLに新しいタブで移動する関数。
+
+    引数:
+        url (str): 移動先のURL。
+        token (str, optional): トークン。デフォルトは空の文字列。
+
+    処理の流れ:
+    1. トークンが指定されている場合、URLにトークンをクエリパラメータとして追加する。
+    2. JavaScriptを使用して、新しいタブで指定されたURLを開く。
+    3. Streamlitの`bokeh_chart`を使用して、JavaScriptを実行するためのHTMLを表示する。
+    """
     if token:
         # トークンをクエリパラメータに追加
         url = f"{url}?token={token}"
@@ -299,32 +383,39 @@ def logout():
 
 
 def record_title_at_user_redis(
-    messages: List[Dict[str, str]],  #   チャットのメッセージのリスト
-    session_id: str,  #   チャットのセッションID
-    timestamp: int,  #   タイムスタンプ
+    messages: List[Dict[str, str]],
+    session_id: str,
+    timestamp: int,
 ) -> str:
     """
-    最初のpromptからタイトルを生成し、redisに記録します。
+    ユーザーの最初のメッセージを元に適切なタイトルを生成し、生成されたタイトルとチャットデータをRedisに保存する。
 
     Args:
-        messages (List[Dict[str, str]]):   チャットのメッセージのリスト。
-        session_id (str):   チャットのセッションID。
-        timestamp (int):   タイムスタンプ。
+        messages (List[Dict[str, str]]): ユーザーのメッセージのリスト
+        session_id (str): セッションID
+        timestamp (int): タイムスタンプ
+
     Returns:
-        str:   生成されたタイトル。
+        str: 整形されたタイトル
+
+    流れ:
+        1. ユーザーの最初のメッセージを取得し、タイトル生成のためのプロンプトを作成
+        2. タイトルを生成し、不要な文字を削除して整形
+        3. 生成されたタイトルとチャットデータをRedisに保存
+        4. 整形されたタイトルを返す
     """
 
-    #   最初のメッセージの内容を取得し、タイトル生成のためのメッセージとして使用します。
+    # ユーザーの最初のメッセージを取得
     first_message_content = messages[0]["content"]
 
-    #   タイトル生成のための追加メッセージを定義します。
+    # タイトル生成のための追加メッセージ
     additional_message = (
-        "以下のユーザーメッセージから適切なタイトルを生成してください。"
-        "簡潔かつ的確なタイトルをたとえ疑問があっても強引に生成してください。"
-        "＜メッセージ＞"
+        "以下のユーザーメッセージから完結で適切なタイトルを生成してください。"
+        "疑問があっても生成してください。例えば「若者の疑問」、「悩み相談」などです。"
+        "<以降メッセージ>"
     )
 
-    #   メッセージの長さが規定の長さを超える場合、メッセージを切り詰めます。
+    # メッセージの長さがタイトルモデルの最大長を超える場合、メッセージを省略
     if (
         len(first_message_content) + len(additional_message)
         > TITLE_MODEL_CHAR_MAX_LENGTH
@@ -341,50 +432,45 @@ def record_title_at_user_redis(
     else:
         message_for_title = additional_message + first_message_content
 
-    #   タイトル生成のためのプロンプトを作成します。
+    # タイトル生成のためのプロンプトを作成
     title_prompt = [{"role": "user", "content": message_for_title}]
 
-    #   タイトルの生成を試みるループです。
-    while True:
-        #   入力トークン数が最大トークン数を超えないかチェックします。
-        if INPUT_MAX_TOKENS >= calc_token_tiktoken(
-            str(title_prompt), model=TITLE_MODEL
-        ):
-            break
-        #   メッセージの内容を1文字削除します。
+    # プロンプトのトークン数がタイトルモデルの最大トークン数を超える場合、プロンプトを削減
+    while INPUT_MAX_TOKENS < calc_token_tiktoken(str(title_prompt), model=TITLE_MODEL):
         title_prompt[0]["content"] = title_prompt[0]["content"][:-1]
 
-    # ChatGPTからタイトルのレスポンスを取得します。
+    # タイトルを生成
     generated_title, title_prompt_trimed = response_chatmodel(
         title_prompt,
         model=TITLE_MODEL,
         stream=False,
-        max_tokens=32,
+        max_tokens=16,
     )
 
-    # promptを暗号化します。
-    title_prompt_encrypted: str = cipher_suite.encrypt(
+    # プロンプトを暗号化
+    title_prompt_encrypted = cipher_suite.encrypt(
         json.dumps(title_prompt_trimed).encode()
     ).decode()
 
-    #   レスポンスからタイトルを取得します。
-    pattern_last_colon = r".*[:：](.*)$"
-    washed_title = re.sub(pattern_last_colon, r"\1", generated_title)
-    pattern_brackets = r'["「『](.+?)[」』"]'
-    washed2_title = re.sub(pattern_brackets, r"\1", washed_title)
+    # 生成されたタイトルから不要な文字を削除
+    washed_title = re.sub(
+        r"TITLE|title|Title|タイトル|[:：]|[\"「『」』]|[{｛(（<＜].+[>＞）)｝}]", "", generated_title
+    )
+    washed_title = washed_title if washed_title else generated_title
 
-    # titleを暗号化します
-    encrypted_washed_title: bytes = cipher_suite.encrypt(washed2_title.encode())
-    encrypted_genarated_title_response: str = cipher_suite.encrypt(
+    # 整形されたタイトルと生成されたタイトルを暗号化
+    encrypted_washed_title = cipher_suite.encrypt(washed_title.encode())
+    encrypted_genarated_title_response = cipher_suite.encrypt(
         json.dumps([{"role": "assistant", "content": generated_title}]).encode()
     ).decode()
 
-    # Redisにタイトルを保存します。
+    # ユーザーのタイトルをRedisに保存
     redisCliTitleAtUser.hset(USER_ID, session_id, encrypted_washed_title)
 
-    # 特別なtitle作成用のmessage_idである{session_id}_000000を付与
+    # メッセージIDを生成
     message_id = f"{session_id}_{0:0>6}"
-    # RedisにメッセージIDと'prompt'のキーで、モデル名、メッセージ、タイムスタンプ、トークン数を保存します。
+
+    # チャットデータをRedisに保存
     redisCliChatData.hset(
         message_id,
         "prompt",
@@ -401,7 +487,6 @@ def record_title_at_user_redis(
         ),
     )
     redisCliChatData.expire(message_id, EXPIRE_TIME)
-    # RedisにメッセージIDと'response'のキーで、モデル名、メッセージ、タイムスタンプ、トークン数を保存します。
     redisCliChatData.hset(
         message_id,
         "response",
@@ -415,8 +500,8 @@ def record_title_at_user_redis(
             }
         ),
     )
-    #   生成されたタイトルを返します。
-    return washed2_title
+
+    return washed_title
 
 
 def get_user_chats_within_last_several_days_sorted(days: int) -> list[tuple]:
@@ -549,7 +634,7 @@ def make_jwt_token(data: dict, expire_time: float = 60.0) -> str:
 
 def anthropic_message_function(
     *,
-    client: anthropic.Anthropic,
+    client: Anthropic,
     max_tokens: int,
     messages: Iterable[MessageParam],
     model: Union[
@@ -564,16 +649,16 @@ def anthropic_message_function(
         ],
     ],
     metadata: dict = NOT_GIVEN,
-    stop_sequences: List[str]  = NOT_GIVEN,
-    stream: bool  = NOT_GIVEN,
+    stop_sequences: List[str] = NOT_GIVEN,
+    stream: bool = NOT_GIVEN,
     system: str = NOT_GIVEN,
-    temperature: float  = NOT_GIVEN,
-    top_k: int  = NOT_GIVEN,
-    top_p: float  = NOT_GIVEN,
+    temperature: float = NOT_GIVEN,
+    top_k: int = NOT_GIVEN,
+    top_p: float = NOT_GIVEN,
     extra_headers: dict | None = None,
     extra_query: dict | None = None,
     extra_body: dict | None = None,
-    timeout: float | httpx.Timeout  = NOT_GIVEN,
+    timeout: float | httpx.Timeout = NOT_GIVEN,
 ):
     if stream:
 
@@ -593,46 +678,57 @@ def anthropic_message_function(
                 extra_body=extra_body,
                 timeout=timeout,
             ) as stream_response:
-                for text in stream_response.text_stream:
+                for i, text in enumerate(stream_response.text_stream):
+                    if not i:
+                        yield
                     yield text
 
-        return chat_stream()
+        cs = chat_stream()
+        cs.__next__()
+        return cs
     else:
-        return client.messages.create(
-            max_tokens=max_tokens,
-            messages=messages,
-            model=model,
-            metadata=metadata,
-            stop_sequences=stop_sequences,
-            system=system,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            extra_headers=extra_headers,
-            extra_query=extra_query,
-            extra_body=extra_body,
-            timeout=timeout,
-        ).content[0].text
+        return (
+            client.messages.create(
+                max_tokens=max_tokens,
+                messages=messages,
+                model=model,
+                metadata=metadata,
+                stop_sequences=stop_sequences,
+                system=system,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                extra_headers=extra_headers,
+                extra_query=extra_query,
+                extra_body=extra_body,
+                timeout=timeout,
+            )
+            .content[0]
+            .text
+        )
 
-def openai_message_function(*,
-                           client : openai,
-                           messages,
-                           model,
-                           max_tokens,
-                           stream):
+
+def openai_message_function(*, client: openai, messages, model, max_tokens, stream):
     if stream:
+
         def chat_stream():
-            for text in client.ChatCompletion.create(messages=messages,
-                                                     model=model,
-                                                     max_tokens=max_tokens,
-                                                     stream=True):
-                yield text['choices'][0]["delta"].get("content", "")
-        return chat_stream()
-    else:        
-        return client.ChatCompletion.create(messages=messages,
-                                            model=model,
-                                            max_tokens=max_tokens,
-                                            stream=False)['choices'][0]['message']['content']
+            for i, text in enumerate(
+                client.ChatCompletion.create(
+                    messages=messages, model=model, max_tokens=max_tokens, stream=True
+                )
+            ):
+                if not i:
+                    yield
+                yield text["choices"][0]["delta"].get("content", "")
+
+        cs = chat_stream()
+        cs.__next__()
+        return cs
+    else:
+        return client.ChatCompletion.create(
+            messages=messages, model=model, max_tokens=max_tokens, stream=False
+        )["choices"][0]["message"]["content"]
+
 
 # USER_ID : AzureEntraIDで与えられる"Oidc_claim_sub"
 # session_id : 一連のChatのやり取りをsessionと呼び、それに割り振られたID。USER_IDとsession作成時間のナノ秒で構成。"{}_{:0>20}".format(USER_ID, int(time.time_ns())
@@ -705,10 +801,6 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
 # api_costの計算用
 API_COST = json.loads(os.environ["API_COST"])
 
-# responseのmax_tokens
-RESPONSE_MAX_TOKENS = int(os.environ['RESPONSE_MAX_TOKENS'])
-
-
 
 headers = _get_websocket_headers()
 if headers is None:
@@ -766,9 +858,6 @@ executor1 = ThreadPoolExecutor(1)
 login_check(login_time)
 
 
-
-
-
 # APIキーの設定
 # OpenAIのAPIキーを環境変数から取得して設定します。
 openai.api_key = os.environ["OA_API_KEY"]
@@ -781,7 +870,7 @@ if os.environ.get("OA_API_BASE"):
 if os.environ.get("OA_API_VERSION"):
     openai.api_version = os.environ["OA_API_VERSION"]
 
-anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 
 # %%
@@ -799,17 +888,21 @@ if "id" not in st.session_state:
     # もしUSER_IDに対応するモデルが利用可能なモデルのリストに含まれていない場合、最初の利用可能なモデルを設定
     if redisCliUserSetting.hget(USER_ID, "model").decode() not in AVAILABLE_MODELS:
         redisCliUserSetting.hset(USER_ID, "model", list(AVAILABLE_MODELS.keys())[0])
+    # 先にcalc_token_tiktokenを実行して、cashに入れておく
+    model: str = redisCliUserSetting.hget(USER_ID, "model").decode()
+    calc_token_tiktoken("test", model=model)
+
     # accesstimeのEXPIRE_TIMEよりも古いものは消す
     redisCliAccessTime.zremrangebyscore("access", "-inf", time.time() - EXPIRE_TIME)
 
     # もしUSER_IDに対応するcustom instructionが設定されていない場合、''を設定
     if not redisCliUserSetting.hexists(USER_ID, "custom_instruction"):
-        redisCliUserSetting.hset(USER_ID, "custom_instruction", 
-                                 cipher_suite.encrypt(b""))
+        redisCliUserSetting.hset(
+            USER_ID, "custom_instruction", cipher_suite.encrypt(b"")
+        )
     # もしUSER_IDに対応するuse_custom_instruction_flagが設定されていない場合、""を設定
     if not redisCliUserSetting.hexists(USER_ID, "use_custom_instruction_flag"):
-        redisCliUserSetting.hset(USER_ID, "use_custom_instruction_flag","")
-    
+        redisCliUserSetting.hset(USER_ID, "use_custom_instruction_flag", "")
 
 
 # USER_IDについてEXPIRE_TIMEを設定する。これにより最後にログインした時から１年間は消えない。
@@ -829,7 +922,7 @@ today_midnight_unixtime = int(today_midnight.timestamp())
 messages_id_within_today: List[bytes] = redisCliAccessTime.zrangebyscore(
     "access", today_midnight_unixtime, "+inf"
 )
-logger.debug('Now model : ')
+logger.debug("Now model : ")
 
 # 今日のコスト計算
 
@@ -842,14 +935,14 @@ for message_id in messages_id_within_today:
         try:
             cost_team += API_COST[key]
         except KeyError:
-            logger.error(f'{key} is not in available model!')
-            
+            logger.error(f"{key} is not in available model!")
+
         if data.get("USER_ID") == USER_ID:
             try:
                 cost_mine += API_COST[key]
             except KeyError:
                 pass
- 
+
 st.title(MY_NAME + "さんとのチャット")
 
 # サイドボタン
@@ -883,8 +976,9 @@ redisCliUserSetting.hset(
         ),
     ),  # 選択されたモデルを設定
 )
-INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]
-
+# modelから限界トークン数を得る。
+INPUT_MAX_TOKENS = AVAILABLE_MODELS[model]["INPUT_MAX_TOKENS"]
+OUTPUT_MAX_TOKENS = AVAILABLE_MODELS[model]["OUTPUT_MAX_TOKENS"]
 
 
 # サイドバーに「New chat」ボタンを追加します。
@@ -979,14 +1073,26 @@ if user_msg:
             json.loads(cipher_suite.decrypt(mes))
             for mes in redisCliMessages.lrange(st.session_state["id"], 0, -1)
         ]
+        # custom_instructionの読み出し
+        if redisCliUserSetting.hget(USER_ID, "use_custom_instruction_flag").decode():
+            custom_instruction = cipher_suite.decrypt(
+                redisCliUserSetting.hget(USER_ID, "custom_instruction")
+            ).decode()
+        else:
+            custom_instruction = ''
+
+        # generatorだが、エラーが起きたら一個目の生成前に止まる。
         response, trimed_messages = response_chatmodel(
             messages,
             model=model,
             stream=True,
-            max_tokens=RESPONSE_MAX_TOKENS,
+            max_tokens=OUTPUT_MAX_TOKENS,
+            custom_instruction=custom_instruction,
         )
     except Exception as e:
         error_flag = True
+        logger.error(e)
+        traceback.print_exc()
         st.warning(e)
         # エラーが出たので今回のユーザーメッセージを削除する
         redisCliMessages.rpop(st.session_state["id"], 1)

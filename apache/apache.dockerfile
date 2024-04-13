@@ -66,7 +66,7 @@ RUN { \
 
 
 
-# ServerName DOMAIN_NAMEの追記
+# auth2.0認証のはず
 #RUN { \
 #    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
 #    echo "ServerName \${DOMAIN_NAME}"; \
@@ -81,6 +81,11 @@ RUN { \
 #    echo "</Location>"; \
 #} >> /etc/apache2/apache2.conf
 
+# /auth用のディレクトリとHTMLファイルの作成
+RUN mkdir -p /var/www/html/auth && \
+    echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
+
+
 # ログアウト用の設定を追加
 RUN { \
    echo "<Location /logout>"; \
@@ -91,9 +96,6 @@ RUN { \
 } >> /etc/apache2/apache2.conf
 
 
-# /auth用のディレクトリとHTMLファイルの作成
-RUN mkdir -p /var/www/html/auth && \
-    echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
 # Certbotの自動更新設定
 RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'apache2ctl graceful'" >> /etc/crontab
