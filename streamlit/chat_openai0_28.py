@@ -826,13 +826,13 @@ except Exception as e:
     USER_ID = "ERRORID"
     MY_NAME = "ERROR IAM"
     login_time = time.time()
-    if headers.get("Host", "")[:9] != "localhost":
+    #if headers.get("Host", "")[:9] != "localhost":
         time.sleep(3)
         st.rerun()
-# st.warning(headers)
-# st.warning(USER_ID)
+st.warning(headers)
+st.warning(USER_ID)
 # headers辞書をJSON文字列に変換
-# headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
+headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
 # ダウンロードボタンを設置
 # st.download_button(
