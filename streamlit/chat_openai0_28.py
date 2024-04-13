@@ -827,8 +827,8 @@ except Exception as e:
     MY_NAME = "ERROR IAM"
     login_time = time.time()
     #if headers.get("Host", "")[:9] != "localhost":
-        time.sleep(3)
-        st.rerun()
+    #    time.sleep(3)
+    #    st.rerun()
 st.warning(headers)
 st.warning(USER_ID)
 # headers辞書をJSON文字列に変換
