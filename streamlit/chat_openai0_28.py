@@ -9,9 +9,8 @@ from typing import Union, Literal, Tuple, Set, Any, List, Generator, Iterable, D
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from cryptography.fernet import Fernet
-from anthropic.types import MessageParam
 import httpx, traceback
-from anthropic import NOT_GIVEN, Anthropic
+from litellm import completion, token_counter
 
 hide_deploy_button_style = """
 <style>
@@ -24,7 +23,6 @@ st.markdown(hide_deploy_button_style, unsafe_allow_html=True)
 def trim_tokens(
     messages: List[dict],
     max_tokens: int,
-    encoding_name: str = "",
     model: str = "gpt-3.5-turbo-0301",
 ) -> List[dict]:
     """
@@ -43,7 +41,7 @@ def trim_tokens(
     while True:
         # 現在のメッセージのトークン数を計算
         total_tokens = calc_token_tiktoken(
-            str(messages), encoding_name=encoding_name, model=model
+            str(messages), model=model
         )
         # トークン数が最大トークン数以下になった場合、ループを終了
         if total_tokens <= max_tokens:
@@ -88,10 +86,8 @@ def response_chatmodel(
     # 設定により、custorm_instructionを必要ならば付加する。
     if custom_instruction:
         messages[-1]["content"] = custom_instruction + "\n" + messages[-1]["content"]
-        logger.debug(f"custom_instruction付加後のmessages: {messages}")
         logger.debug(
             f"custom_instruction付加後のmessagesのmessagesのトークン数: {calc_token_tiktoken(str(messages))}")
-
     trimed_messages: List[dict] = trim_tokens(messages, INPUT_MAX_TOKENS, model=model)
     logger.debug(f"trim_tokens後のmessages: {str(messages)}")
     logger.debug(
@@ -102,23 +98,13 @@ def response_chatmodel(
         logger.info(
             f"Sending request to OpenAI API with messages: {messages}, model : {model}"
         )
-        if model[:6] == "claude":
-            response = anthropic_message_function(
-                messages=trimed_messages,
-                client=anthropic_client,
+        response = common_message_function(
                 model=model,
+                messages=trimed_messages,
                 stream=stream,
                 max_tokens=max_tokens,
             )
 
-        else:
-            response = openai_message_function(
-                client=openai,
-                model=model,
-                messages=trimed_messages,
-                stream=stream,
-                max_tokens=max_tokens,
-            )
 
     except Exception as e:
         logger.error(f"Error while communicating with OpenAI API: {e}")
@@ -128,39 +114,20 @@ def response_chatmodel(
 
 
 def calc_token_tiktoken(
-    chat: str, encoding_name: str = "", model: str = "claude-3-haiku-20240307"
+    chat: str, model: str = "claude-3-haiku-20240307"
 ) -> int:
     """
     # 引数の説明:
     # chat: トーク��数を計算するテキスト。このテキストがAIモデルによってどのようにエンコードされるかを分析します。
 
-    # encoding_name: 使用するエンコーディングの名前。この引数を指定すると、そのエンコーディングが使用されます。
-    # 例えば 'utf-8' や 'ascii' などのエンコーディング名を指定できます。指定しない場合は、modelに基づいてエンコーディングが選ばれます。
-
+    
     # model: 使用するAIモデルの名前。この引数は、特定のAIモデルに対応するエンコーディングを自動で選択するために使用されます。
     # 例えば 'gpt-3.5-turbo-0301' というモデル名を指定すれば、そのモデルに適したエンコーディングが選ばれます。
-    # encoding_nameが指定されていない場合のみ、この引数が使用されます。
-    # modelが'claude'で始まる場合はanthropic.Anthropic.count_tokensが代わりに使われます。
     """
     chat = str(chat)
 
-    if model[:6] == "claude":
-        return anthropic_client.count_tokens(chat)
+    return token_counter(model=model, text=chat)
 
-    # エンコーディングを決定する
-    if encoding_name:
-        # encoding_nameが指定されていれば、その名前でエンコーディングを取得する
-        encoding = tiktoken.get_encoding(encoding_name)
-    elif model:
-        # modelが指定されていれば、そのモデルに対応するエンコーディングを取得する
-        encoding = tiktoken.get_encoding(tiktoken.encoding_for_model(model).name)
-    else:
-        # 両方とも指定されていない場合はエラーを投げる
-        raise ValueError("Both encoding_name and model are missing.")
-
-    # テキストをトークンに変換し、その数を数える
-    num_tokens = len(encoding.encode(chat))
-    return num_tokens
 
 
 def check_rate_limit_exceed(
@@ -623,7 +590,7 @@ def hash_string_md5_with_salt(input_string: str) -> str:
     return md5_hash.hexdigest()
 
 
-def make_jwt_token(data: dict, expire_time: float = 60.0) -> str:
+def make_jwt_token(data: dict, expire_time: float = 2.0) -> str:
     now = time.time()
     expiration_time = now + expire_time
 
@@ -631,102 +598,30 @@ def make_jwt_token(data: dict, expire_time: float = 60.0) -> str:
     token = jwt.encode(data_with_exp, JWT_SECRET_KEY, algorithm="HS256")
     return token
 
-
-def anthropic_message_function(
-    *,
-    client: Anthropic,
-    max_tokens: int,
-    messages: Iterable[MessageParam],
-    model: Union[
-        str,
-        Literal[
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            "claude-2.1",
-            "claude-2.0",
-            "claude-instant-1.2",
-        ],
-    ],
-    metadata: dict = NOT_GIVEN,
-    stop_sequences: List[str] = NOT_GIVEN,
-    stream: bool = NOT_GIVEN,
-    system: str = NOT_GIVEN,
-    temperature: float = NOT_GIVEN,
-    top_k: int = NOT_GIVEN,
-    top_p: float = NOT_GIVEN,
-    extra_headers: dict | None = None,
-    extra_query: dict | None = None,
-    extra_body: dict | None = None,
-    timeout: float | httpx.Timeout = NOT_GIVEN,
-):
-    if stream:
-
-        def chat_stream():
-            with client.messages.stream(
-                max_tokens=max_tokens,
-                messages=messages,
-                model=model,
-                metadata=metadata,
-                stop_sequences=stop_sequences,
-                system=system,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                extra_headers=extra_headers,
-                extra_query=extra_query,
-                extra_body=extra_body,
-                timeout=timeout,
-            ) as stream_response:
-                for i, text in enumerate(stream_response.text_stream):
-                    if not i:
-                        yield
-                    yield text
-
-        cs = chat_stream()
-        cs.__next__()
-        return cs
-    else:
-        return (
-            client.messages.create(
-                max_tokens=max_tokens,
-                messages=messages,
-                model=model,
-                metadata=metadata,
-                stop_sequences=stop_sequences,
-                system=system,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-                extra_headers=extra_headers,
-                extra_query=extra_query,
-                extra_body=extra_body,
-                timeout=timeout,
-            )
-            .content[0]
-            .text
-        )
-
-
-def openai_message_function(*, client: openai, messages, model, max_tokens, stream):
+def common_message_function(*, model:str,
+                            messages:List,
+                            max_tokens:int=None,
+                            stream:bool=False,
+                            **kwargs):
     if stream:
 
         def chat_stream():
             for i, text in enumerate(
-                client.ChatCompletion.create(
-                    messages=messages, model=model, max_tokens=max_tokens, stream=True
-                )
+                completion(
+                    messages=messages, model=model, max_tokens=max_tokens, stream=True,
+                **kwargs)
             ):
                 if not i:
                     yield
-                yield text["choices"][0]["delta"].get("content", "")
+                yield text["choices"][0]["delta"].get("content", "") or ""
 
         cs = chat_stream()
         cs.__next__()
         return cs
     else:
-        return client.ChatCompletion.create(
-            messages=messages, model=model, max_tokens=max_tokens, stream=False
+        return completion(
+            messages=messages, model=model, max_tokens=max_tokens, stream=False,
+            **kwargs
         )["choices"][0]["message"]["content"]
 
 
@@ -858,19 +753,6 @@ executor1 = ThreadPoolExecutor(1)
 login_check(login_time)
 
 
-# APIキーの設定
-# OpenAIのAPIキーを環境変数から取得して設定します。
-openai.api_key = os.environ["OA_API_KEY"]
-
-# AZURE用の設定
-if os.environ.get("OA_API_TYPE"):
-    openai.api_type = os.environ["OA_API_TYPE"]
-if os.environ.get("OA_API_BASE"):
-    openai.api_base = os.environ["OA_API_BASE"]
-if os.environ.get("OA_API_VERSION"):
-    openai.api_version = os.environ["OA_API_VERSION"]
-
-anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 
 # %%
@@ -958,7 +840,7 @@ st.sidebar.markdown(
 
 # 設定ボタンを作る。設定画面に飛ぶ
 if st.sidebar.button("Settings"):
-    token = make_jwt_token({"user_id": USER_ID}, expire_time=60)
+    token = make_jwt_token({"user_id": USER_ID}, expire_time=2.0)
     jump_to_url(f"https://{DOMAIN_NAME}/settings", token=token)
 
 
@@ -1198,3 +1080,6 @@ if user_msg:
             # logger.debug('Rerun')
 
 # %%
+
+# %%
+

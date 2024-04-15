@@ -66,7 +66,7 @@ RUN { \
 
 
 
-# auth2.0認証のはず
+# auth2.0 microsoft用
 #RUN { \
 #    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
 #    echo "ServerName \${DOMAIN_NAME}"; \
