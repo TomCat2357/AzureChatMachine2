@@ -27,9 +27,7 @@ ENV PATH="/usr/local/bin:$PATH"
 
 # Streamlitのインストール (ここでStreamlitをインストール)
 # 暗号化ライブラリー
-RUN pip install bokeh==2.4.3 cryptography==39.0.1 streamlit==1.31.1 openai==0.28 tiktoken==0.3.3 redis pyjwt 
-RUN pip install anthropic
-RUN pip install litellm
+RUN pip install bokeh==2.4.3 cryptography==39.0.1 streamlit==1.31.1 openai==0.28 tiktoken==0.3.3 redis pyjwt anthropic boto3 lightllm
 EXPOSE 8501
 
 CMD sh -c "streamlit run chat_openai0_28.py"
