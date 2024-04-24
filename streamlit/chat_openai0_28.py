@@ -290,6 +290,10 @@ def login_check(login_time: float) -> None:
 
     # 最後のアクセスログが存在しない場合、ログイン時間を登録
     redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
+    if not last_access_log:
+        last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
+        
+    
     # 最後のアクセスログの種類と時間を取得
     kind: str = last_access_log[0][0].decode().split("_")[0]
     last_log_time: float = last_access_log[0][1]
