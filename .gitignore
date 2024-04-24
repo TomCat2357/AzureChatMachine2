@@ -5,6 +5,7 @@ data/apache_data/*
 data/streamlit_data/*
 !data/streamlit_data/.gitkeep
 .env
+.bash_history
 *.log
 *.log.*
 *.key

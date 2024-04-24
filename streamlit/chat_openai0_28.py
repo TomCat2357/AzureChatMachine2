@@ -11,6 +11,8 @@ from collections import Counter
 from cryptography.fernet import Fernet
 import httpx, traceback
 from litellm import completion, token_counter
+from anthropic import Anthropic
+anthropic_client = Anthropic()
 
 hide_deploy_button_style = """
 <style>
@@ -125,8 +127,11 @@ def calc_token_tiktoken(
     # 例えば 'gpt-3.5-turbo-0301' というモデル名を指定すれば、そのモデルに適したエンコーディングが選ばれます。
     """
     chat = str(chat)
-
-    return token_counter(model=model, text=chat)
+    
+    if 'claude' in model:
+        return anthropic_client.count_tokens(chat)
+    else:
+        return token_counter(model=model, text=chat)
 
 
 
@@ -1080,8 +1085,3 @@ if user_msg:
                 assistant_response_area.write(assistant_msg)
             logger.info(f"Response for chat : {assistant_msg}")
             # logger.debug('Rerun')
-
-# %%
-
-# %%
-
