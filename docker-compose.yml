@@ -8,22 +8,27 @@ services:
       dockerfile: apache.dockerfile # ネットワーク利用時
       # build時に使う
       args:
-        DOMAIN_NAME: ${DOMAIN_NAME} 
+        CLOUD: ${CLOUD} 
+        DOMAIN_NAME: ${DOMAIN_NAME}
     ports : 
       - "443:443"
       - "80:80"
     volumes:
       - ./data/apache_log:/var/log/apache2 # apache2のlog保存用
-      - /etc/letsencrypt:/etc/letsencrypt # letsencryptの証明書保存用
+      #- /etc/letsencrypt:/etc/letsencrypt # letsencryptの証明書保存用
+      - ./dns_challenge:/root/
     # コンテナ実行時に使用
     environment:
       - 'TZ=Asia/Tokyo'
       - EMAIL=${EMAIL}
       - DOMAIN_NAME=${DOMAIN_NAME}
-      - TENANT_ID=${TENANT_ID}
       - CLIENT_ID=${CLIENT_ID}
       - CLIENT_SECRET=${CLIENT_SECRET}
       - PASSPHRASE=${PASSPHRASE}
+      - Azure_TENANT_ID=${Azure_TENANT_ID}
+      - AWS_REGION_NAME=${AWS_REGION_NAME}
+      - AWS_COGNITO_USERPOOL_ID=${AWS_COGNITO_USERPOOL_ID}
+      - AWS_COGNITO_DOMAIN_NAME=${AWS_COGNITO_DOMAIN_NAME}
     restart: always
 
   streamlit:

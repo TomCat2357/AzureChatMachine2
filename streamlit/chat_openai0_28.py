@@ -577,11 +577,11 @@ def get_chat_data_as_csv():
     return csv_data_shift_jis
 
 
-def hash_string_md5_with_salt(input_string: str) -> str:
+def hash_string_md5_with_salt(input_string: str, hash_salt: str) -> str:
     if not input_string:
         raise ValueError("input_stringが空です。")
     # 文字列にハッシュソルトを加えてバイトに変換
-    input_bytes = (input_string + HASH_SALT).encode()
+    input_bytes = (input_string + hash_salt).encode()
     # MD5ハッシュオブジェクトを作成
     md5_hash = hashlib.md5()
     # バイトをハッシュに更新
@@ -693,7 +693,7 @@ TITLE_MODEL, TITLE_MODEL_CHAR_MAX_LENGTH = tuple(
     json.loads(os.environ["TITLE_MODEL"]).items()
 )[0]
 
-# api_costの計算用
+# api_costの計算用(1Kトークン毎の日本円）　構造{<モデル名>:{"prompt":1.234,"response":2.345},....}
 API_COST = json.loads(os.environ["API_COST"])
 
 
@@ -705,27 +705,31 @@ if headers is None:
 # """
 try:
     # USER_IDはemailにHASH_SALTを加えてmd5でハッシュ化してから１文字飛ばしで抽出したもの
-    USER_ID: str = hash_string_md5_with_salt(headers["Oidc_claim_email"])[::2]
+    USER_ID: str = hash_string_md5_with_salt(headers["Oidc_claim_email"],HASH_SALT)[::2]
     # USER_ID: str = headers["Oidc_claim_email"]
     if not USER_ID:
         raise Exception("No email info in claim.")
-    MY_NAME = (
-        headers.get("Oidc_claim_name", "")
-        .encode("latin1", errors="ignore")
-        .decode("utf8", errors="ignore")
-    )
+    MY_NAME_ENCRYPTED : str = redisCliUserSetting.hget(USER_ID, "user_name")
+    if MY_NAME_ENCRYPTED is None:
+        MY_NAME = 'NO_NAME'
+        MY_NAME_ENCRYPTED = cipher_suite.encrypt(MY_NAME.encode())
+        redisCliUserSetting.hset(USER_ID, "user_name", MY_NAME_ENCRYPTED)
+    else:
+        MY_NAME = cipher_suite.decrypt(MY_NAME_ENCRYPTED).decode('utf-8')
     login_time = int(headers["Oidc_claim_exp"]) - 3600
 
 except Exception as e:
     st.warning(e)
     USER_ID = "ERRORID"
-    MY_NAME = "ERROR IAM"
+    MY_NAME = "NO_NAME"
+    MY_NAME_ENCRYPTED = cipher_suite.encrypt(MY_NAME.encode())
+    redisCliUserSetting.hset(USER_ID, "user_name", MY_NAME_ENCRYPTED)
     login_time = time.time()
     #if headers.get("Host", "")[:9] != "localhost":
     #    time.sleep(3)
     #    st.rerun()
-st.warning(headers)
-st.warning(USER_ID)
+#st.warning(headers)
+#st.warning(USER_ID)
 # headers辞書をJSON文字列に変換
 headers_json = json.dumps(headers, ensure_ascii=True, indent=2)
 
@@ -812,18 +816,16 @@ cost_team, cost_mine = 0, 0
 for message_id in messages_id_within_today:
     for kind, data in redisCliChatData.hgetall(message_id).items():
         data = json.loads(data)
+        kind = kind.decode()
         # logger.debug(f'data : {data}')
-        key = kind.decode() + "_" + data["model"]
+        #key = kind.decode() + "_" + data["model"]
         try:
-            cost_team += API_COST[key]
-        except KeyError:
-            logger.error(f"{key} is not in available model!")
-
-        if data.get("USER_ID") == USER_ID:
-            try:
-                cost_mine += API_COST[key]
-            except KeyError:
-                pass
+            cost_team += API_COST[data["model"]][kind]/1000
+            if data.get("USER_ID") == USER_ID:
+                cost_mine += API_COST[data["model"]][kind]/1000
+        except KeyError as e:
+            print(e)
+            logger.error(f"{data['model']} is not in available model!")
 
 st.title(MY_NAME + "さんとのチャット")
 

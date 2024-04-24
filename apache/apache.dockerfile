@@ -6,38 +6,33 @@ RUN apt update && \
     apt install -y \
     apache2 wget vim libapache2-mod-auth-openidc cron
 RUN DEBIAN_FRONTEND=noninteractive apt install -y \
-    certbot python3-certbot-apache  \
+    certbot python3-certbot-apache wget nano\
     && rm -rf /var/lib/apt/lists/*
 
 
 # 必要なモジュールの有効化
 RUN a2enmod proxy proxy_http proxy_wstunnel rewrite ssl auth_openidc
 
-# DOMAIN_NAMEの値を環境変数に設定
+#CLOUDの種類をARGから持ってくる。
+ARG CLOUD
 ARG DOMAIN_NAME
-ENV DOMAIN_NAME=${DOMAIN_NAME}
-
-# 自己署名証明書を作る
-#RUN mkdir -p /etc/letsencrypt/live/${DOMAIN_NAME} && \
-#    openssl genrsa -out /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem 2048 && \
-#    openssl req -new -key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -subj "/CN=${DOMAIN_NAME}" && \
-#    openssl x509 -req -days 365 -in /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -signkey /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem
-
 
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
 RUN { \
+     echo 'PassEnv DOMAIN_NAME'; \
      echo '<VirtualHost *:80>'; \
-     echo "    ServerName ${DOMAIN_NAME}"; \
-     echo "    Redirect permanent / https://${DOMAIN_NAME}"; \
+     echo '    ServerName ${DOMAIN_NAME}'; \
+     echo '    Redirect permanent / https://${DOMAIN_NAME}'; \
      echo '</VirtualHost>'; \
      echo '<IfModule mod_ssl.c>'; \
      echo '<VirtualHost *:443>'; \
-     echo "    ServerName ${DOMAIN_NAME}"; \
+     echo '    ServerName ${DOMAIN_NAME}'; \
      echo '    SSLEngine on'; \
      echo '    Alias /auth /var/www/html/auth'; \
-     echo "    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem"; \
-     echo "    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem"; \
+     echo '    Alias /logout /var/www/html/logout'; \
+     echo '    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem'; \
+     echo '    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem'; \
      echo '    ProxyPreserveHost On'; \
      echo '    RewriteEngine On'; \
      echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
@@ -66,35 +61,55 @@ RUN { \
 
 
 
-# auth2.0 microsoft用
-#RUN { \
-#    echo "PassEnv TENANT_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE"; \
-#    echo "ServerName \${DOMAIN_NAME}"; \
-#    echo "OIDCProviderMetadataURL https://login.microsoftonline.com/\${TENANT_ID}/v2.0/.well-known/openid-configuration"; \
-#    echo "OIDCClientID \${CLIENT_ID}"; \
-#    echo "OIDCClientSecret \${CLIENT_SECRET}"; \
-#    echo "OIDCRedirectURI https://\${DOMAIN_NAME}/auth"; \
-#    echo "OIDCCryptoPassphrase \${PASSPHRASE}"; \
-#    echo "<Location />"; \
-#    echo "    AuthType openid-connect"; \
-#    echo "    Require valid-user"; \
-#    echo "</Location>"; \
-#} >> /etc/apache2/apache2.conf
+# auth2.0用
+RUN \
+    if [ "${CLOUD}" = "AWS" ]; then \
+        OIDCProviderMetadataURL='https://cognito-idp.${AWS_REGION_NAME}.amazonaws.com/${AWS_COGNITO_USERPOOL_ID}/.well-known/openid-configuration' && \
+        LOGOUT_URL='https://${AWS_COGNITO_DOMAIN_NAME}.auth.${AWS_REGION_NAME}.amazoncognito.com/logout?client_id=${CLIENT_ID}&logout_uri=https://${DOMAIN_NAME}/logout' && \
+        OIDCClientSecretLine='OIDCResponseType code'; \
+    elif [ "${CLOUD}" = "Azure" ]; then \
+        OIDCProviderMetadataURL='https://login.microsoftonline.com/${Azure_TENANT_ID}/v2.0/.well-known/openid-configuration' && \
+        LOGOUT_URL='https://login.microsoftonline.com/${Azure_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://${DOMAIN_NAME}/logout_success'&& \
+        OIDCClientSecretLine='OIDCClientSecret ${CLIENT_SECRET}'; \
+    fi && \
+    { \
+    echo 'PassEnv Azure_TENANT_ID AWS_REGION_NAME AWS_COGNITO_DOMAIN_NAME AWS_COGNITO_USERPOOL_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE'; \
+    echo 'ServerName ${DOMAIN_NAME}'; \
+    echo "OIDCProviderMetadataURL ${OIDCProviderMetadataURL}"; \
+    echo 'OIDCClientID ${CLIENT_ID}'; \
+    echo "${OIDCClientSecretLine}"; \
+    echo 'OIDCRedirectURI https://${DOMAIN_NAME}/auth'; \
+    echo 'OIDCCryptoPassphrase ${PASSPHRASE}'; \
+    echo '<Location />'; \
+    echo '    AuthType openid-connect'; \
+    echo '    Require valid-user'; \
+    echo '</Location>'; \
+   echo '<Location /logout>'; \
+   echo '    AuthType openid-connect'; \
+   echo '    OIDCUnAuthAction 401'; \
+   echo "    RedirectMatch 302 ^/logout$ ${LOGOUT_URL}"; \
+   echo '</Location>'; \
+} >> /etc/apache2/apache2.conf
 
 # /auth用のディレクトリとHTMLファイルの作成
 RUN mkdir -p /var/www/html/auth && \
     echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
+# /auth用のディレクトリとHTMLファイルの作成
+RUN mkdir -p /var/www/html/logout && \
+    echo "<html><body>ログアウトしました</body></html>" > /var/www/html/logout/index.html
 
-# ログアウト用の設定を追加
-RUN { \
-   echo "<Location /logout>"; \
-   echo "    AuthType openid-connect"; \
-   echo "    OIDCUnAuthAction 401"; \
-   echo "    RedirectMatch 302 ^/logout$ https://login.microsoftonline.com/\${TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://www.google.com/"; \
-   echo "</Location>"; \
-} >> /etc/apache2/apache2.conf
+#ENV DOMAIN_NAME=${DOMAIN_NAME}
 
+# localhostのときだけ自己署名証明書を作る
+RUN echo "${DOMAIN_NAME}"
+RUN if [ "${DOMAIN_NAME}" = "localhost" ]; then \
+    mkdir -p /etc/letsencrypt/live/${DOMAIN_NAME} && \
+    openssl genrsa -out /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem 2048 && \
+    openssl req -new -key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -subj "/CN=${DOMAIN_NAME}" && \
+    openssl x509 -req -days 365 -in /etc/letsencrypt/live/${DOMAIN_NAME}/csr.pem -signkey /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem -out /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem ;\
+    fi
+    
 
 
 # Certbotの自動更新設定
