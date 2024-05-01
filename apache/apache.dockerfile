@@ -19,8 +19,13 @@ ARG DOMAIN_NAME
 
 # Apacheの設定ファイルを作成
 RUN rm -f /etc/apache2/sites-available/default-sss.conf
-RUN { \
-     echo 'PassEnv DOMAIN_NAME'; \
+RUN if [ "${CLOUD}" = "AWS" ]; then \
+LOGOUT_URL='https://${AWS_COGNITO_DOMAIN_NAME}.auth.${AWS_REGION_NAME}.amazoncognito.com/logout?client_id=${CLIENT_ID}&logout_uri=https://${DOMAIN_NAME}/logout_success'; \
+elif [ "${CLOUD}" = "Azure" ]; then \
+LOGOUT_URL='https://login.microsoftonline.com/${Azure_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://${DOMAIN_NAME}/logout_success'; \
+fi && \
+{ \
+     echo 'PassEnv DOMAIN_NAME Azure_TENANT_ID AWS_REGION_NAME AWS_COGNITO_DOMAIN_NAME AWS_COGNITO_USERPOOL_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE'; \
      echo '<VirtualHost *:80>'; \
      echo '    ServerName ${DOMAIN_NAME}'; \
      echo '    Redirect permanent / https://${DOMAIN_NAME}'; \
@@ -29,8 +34,6 @@ RUN { \
      echo '<VirtualHost *:443>'; \
      echo '    ServerName ${DOMAIN_NAME}'; \
      echo '    SSLEngine on'; \
-     echo '    Alias /auth /var/www/html/auth'; \
-     echo '    Alias /logout /var/www/html/logout'; \
      echo '    SSLCertificateFile /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem'; \
      echo '    SSLCertificateKeyFile /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem'; \
      echo '    ProxyPreserveHost On'; \
@@ -38,6 +41,8 @@ RUN { \
      echo '    RewriteCond %{HTTP:Upgrade} websocket [NC]'; \
      echo '    RewriteCond %{HTTP:Connection} upgrade [NC]'; \
      echo '    RewriteRule /(.*) ws://streamlit:8501/$1 [P,L]'; \
+     echo '    ProxyPass /logout_success !'; \
+     echo '    ProxyPass /logout !'; \
      echo '    ProxyPass / http://streamlit:8501/'; \
      echo '    ProxyPassReverse / http://streamlit:8501/'; \
      echo '    <Location /settings>'; \
@@ -55,6 +60,17 @@ RUN { \
      echo '        ProxyPass http://flask:5000/f_back'; \
      echo '        ProxyPassReverse http://flask:5000/f_back'; \
      echo '    </Location>'; \
+     echo '    <Location /logout>'; \
+     echo '         ProxyPass !'; \
+     echo "         RedirectMatch ^/logout$ ${LOGOUT_URL}"; \
+     echo '     </Location>'; \
+     echo '     <Location /logout_success>'; \
+     echo '        ProxyPass http://flask:5000/f_logout_success'; \
+     echo '        ProxyPassReverse http://flask:5000/f_logout_success'; \
+     echo '        Require all granted'; \
+     #echo '         Header edit Set-Cookie ^(.*)$ $1;Domain=localhost;Max-Age=0'; \
+     #echo '         Header edit Set-Cookie ^(.*)domain=%{DOMAIN_NAME}e(.*)$ $1domain=%{DOMAIN_NAME}e;Max-Age=0$2'; \
+     echo '     </Location>'; \
      echo '</VirtualHost>'; \
      echo '</IfModule>'; \
    } > /etc/apache2/sites-available/000-default.conf
@@ -64,45 +80,38 @@ RUN { \
 # auth2.0用
 RUN \
     if [ "${CLOUD}" = "AWS" ]; then \
-        OIDCProviderMetadataURL='https://cognito-idp.${AWS_REGION_NAME}.amazonaws.com/${AWS_COGNITO_USERPOOL_ID}/.well-known/openid-configuration' && \
-        LOGOUT_URL='https://${AWS_COGNITO_DOMAIN_NAME}.auth.${AWS_REGION_NAME}.amazoncognito.com/logout?client_id=${CLIENT_ID}&logout_uri=https://${DOMAIN_NAME}/logout' && \
-        OIDCClientSecretLine='OIDCResponseType code'; \
+        OIDCProviderMetadataURL='https://cognito-idp.${AWS_REGION_NAME}.amazonaws.com/${AWS_COGNITO_USERPOOL_ID}/.well-known/openid-configuration' ; \
     elif [ "${CLOUD}" = "Azure" ]; then \
-        OIDCProviderMetadataURL='https://login.microsoftonline.com/${Azure_TENANT_ID}/v2.0/.well-known/openid-configuration' && \
-        LOGOUT_URL='https://login.microsoftonline.com/${Azure_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=https://${DOMAIN_NAME}/logout_success'&& \
-        OIDCClientSecretLine='OIDCClientSecret ${CLIENT_SECRET}'; \
+        OIDCProviderMetadataURL='https://login.microsoftonline.com/${Azure_TENANT_ID}/v2.0/.well-known/openid-configuration' ; \
     fi && \
     { \
     echo 'PassEnv Azure_TENANT_ID AWS_REGION_NAME AWS_COGNITO_DOMAIN_NAME AWS_COGNITO_USERPOOL_ID CLIENT_ID CLIENT_SECRET DOMAIN_NAME PASSPHRASE'; \
-    echo 'ServerName ${DOMAIN_NAME}'; \
+    echo 'Alias /auth /var/www/html/auth'; \
+    #echo 'Alias /logout_success /var/www/html/logout_success'; \
+   echo 'ServerName ${DOMAIN_NAME}'; \
     echo "OIDCProviderMetadataURL ${OIDCProviderMetadataURL}"; \
     echo 'OIDCClientID ${CLIENT_ID}'; \
-    echo "${OIDCClientSecretLine}"; \
+    echo 'OIDCClientSecret ${CLIENT_SECRET}'; \
     echo 'OIDCRedirectURI https://${DOMAIN_NAME}/auth'; \
     echo 'OIDCCryptoPassphrase ${PASSPHRASE}'; \
+    echo 'OIDCResponseType code'; \
     echo '<Location />'; \
     echo '    AuthType openid-connect'; \
     echo '    Require valid-user'; \
     echo '</Location>'; \
-   echo '<Location /logout>'; \
-   echo '    AuthType openid-connect'; \
-   echo '    OIDCUnAuthAction 401'; \
-   echo "    RedirectMatch 302 ^/logout$ ${LOGOUT_URL}"; \
-   echo '</Location>'; \
-} >> /etc/apache2/apache2.conf
+    } >> /etc/apache2/apache2.conf
 
 # /auth用のディレクトリとHTMLファイルの作成
 RUN mkdir -p /var/www/html/auth && \
     echo "<html><body>認証されました</body></html>" > /var/www/html/auth/index.html
 
 # /auth用のディレクトリとHTMLファイルの作成
-RUN mkdir -p /var/www/html/logout && \
-    echo "<html><body>ログアウトしました</body></html>" > /var/www/html/logout/index.html
+#RUN mkdir -p /var/www/html/logout_success && \
+#    echo "<html><body>ログアウトしました</body></html>" > /var/www/html/logout_success/index.html
 
 #ENV DOMAIN_NAME=${DOMAIN_NAME}
 
 # localhostのときだけ自己署名証明書を作る
-RUN echo "${DOMAIN_NAME}"
 RUN if [ "${DOMAIN_NAME}" = "localhost" ]; then \
     mkdir -p /etc/letsencrypt/live/${DOMAIN_NAME} && \
     openssl genrsa -out /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem 2048 && \
@@ -117,10 +126,7 @@ RUN echo "0 12 * * * root certbot renew --quiet --no-self-upgrade --post-hook 'a
 
 # 初期設定用のスクリプトを作成し、実行権限を付与
 RUN echo '#!/bin/bash'"\n"\
-'# Certbotの設定'"\n"\
-#'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect'"\n"\
-'# cronデーモンの起動'"\n"\
-#'cron'"\n"\
+
 '# Apacheが既に実行中かどうかを確認'"\n"\
 'if ! pidof apache2 > /dev/null; then'"\n"\
 '    echo "Starting Apache..."'"\n"\
@@ -129,6 +135,13 @@ RUN echo '#!/bin/bash'"\n"\
 '    echo "Apache is already running. Keeping it running."'"\n"\
 '    tail -f /dev/null'"\n"\
 'fi' > /init-setup.sh && chmod +x /init-setup.sh
+
+RUN if [ "${DOMAIN_NAME}" != "localhost" ]; then \
+    echo \
+    '# Certbotの設定'"\n"\
+    'certbot --apache --non-interactive --agree-tos --email ${EMAIL} -d ${DOMAIN_NAME} --redirect'"\n"\
+    '# cronデーモンの起動'"\n"\
+    'cron'"\n" >> /init-setup.sh && chmod +x /init-setup.sh
 
 
 

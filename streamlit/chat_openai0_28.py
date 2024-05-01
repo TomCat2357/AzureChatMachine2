@@ -267,58 +267,13 @@ def initialize_logger(user_id=""):
 # ユーザーのログイン処理を行う関数
 def login_check(login_time: float) -> None:
     """
-    ユーザーのログイン状態を確認し、必要に応じてログイン・ログアウト処理を行う関数。
+    ユーザーのログイン状態を確認し、必要に応じてログイン処理を行う関数。
 
     引数:
         login_time (float): ユーザーがログインした時間（UNIX時間）。
-
-    処理の流れ:
-    1. ユーザーの最後のアクセスログを取得する。
-    2. 最後のアクセスログが存在しない場合、ログイン時間を登録する。
-    3. 最後のアクセスログが存在する場合:
-       - 最後のアクセスログの種類と時間を取得する。
-       - 最後のアクセスログの種類が "LOGOUT" の場合:
-         - login_timeがLOGOUT時間よりも古い場合は、ログアウト処理を行う。
-         - login_timeがLOGOUT時間よりも新しい場合は、ログイン処理を行う。
-       - 最後のアクセスログの種類が "ACTION" または "LOGIN" の場合:
-         - 最後のアクセスログの時間が現在時刻よりも未来の場合、エラーを発生させる。
-         - 最後のアクセスログから現在時刻までSESSION_TIMEOUT_PERIODを超えていた場合、ログアウト処理を行う。
-         - そうでない場合、活動時間とログイン時間を更新する。
     """
-    # ユーザーの最後のアクセスログを取得
-    last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
-
     # 最後のアクセスログが存在しない場合、ログイン時間を登録
     redisCliUserAccess.zadd(USER_ID, {f"LOGIN_{login_time*10**9}": login_time})
-    if not last_access_log:
-        last_access_log = redisCliUserAccess.zrevrange(USER_ID, 0, 0, withscores=True)
-        
-    
-    # 最後のアクセスログの種類と時間を取得
-    kind: str = last_access_log[0][0].decode().split("_")[0]
-    last_log_time: float = last_access_log[0][1]
-
-    # 最後のアクセスログの種類が "LOGOUT" の場合
-    if kind == "LOGOUT":
-        # login_timeがLOGOUT時間よりも古い場合は、ログアウト処理を行う
-        if last_log_time >= login_time:
-            st.warning("ログアウトされました。ブラウザを閉じてください")
-            time.sleep(3)
-            st.rerun()
-        # login_timeがLOGOUT時間よりも新しい場合は、ログイン処理を行う
-
-    # 最後のアクセスログの種類が "ACTION" または "LOGIN" の場合
-    else:  # kind == "ACTION" or kind == "LOGIN"
-        # 最後のアクセスログの時間が現在時刻よりも未来の場合、エラーを発生させる
-        if last_log_time > time.time() + 1:
-            raise Exception("現在時刻よりも未来の時間の行動記録があります。")
-        # 最後のアクセスログから現在時刻までSESSION_TIMEOUT_PERIODを超えていた場合、ログアウト処理を行う
-        if time.time() - last_log_time > SESSION_TIMEOUT_PERIOD:
-            logout()
-        # そうでない場合、活動時間とログイン時間を更新する
-        else:
-            now = time.time()
-            redisCliUserAccess.zadd(USER_ID, {f"ACTION_{now*10**9}": now})
 
 
 def jump_to_url(url: str, token: str = ""):
@@ -720,23 +675,24 @@ try:
         raise Exception("No email info in claim.")
     MY_NAME_ENCRYPTED : str = redisCliUserSetting.hget(USER_ID, "user_name")
     if MY_NAME_ENCRYPTED is None:
-        MY_NAME = 'NO_NAME'
+        MY_NAME = 'Enter Nickname'
         MY_NAME_ENCRYPTED = cipher_suite.encrypt(MY_NAME.encode())
         redisCliUserSetting.hset(USER_ID, "user_name", MY_NAME_ENCRYPTED)
     else:
         MY_NAME = cipher_suite.decrypt(MY_NAME_ENCRYPTED).decode('utf-8')
-    login_time = int(headers["Oidc_claim_exp"]) - 3600
+    #login_time = int(headers["Oidc_claim_exp"]) - 3600
+    login_time = time.time()
 
 except Exception as e:
     st.warning(e)
-    USER_ID = "ERRORID"
-    MY_NAME = "NO_NAME"
-    MY_NAME_ENCRYPTED = cipher_suite.encrypt(MY_NAME.encode())
-    redisCliUserSetting.hset(USER_ID, "user_name", MY_NAME_ENCRYPTED)
-    login_time = time.time()
+    #USER_ID = "ERRORID"
+    #MY_NAME = "NO_NAME"
+    #MY_NAME_ENCRYPTED = cipher_suite.encrypt(MY_NAME.encode())
+    #redisCliUserSetting.hset(USER_ID, "user_name", MY_NAME_ENCRYPTED)
+    #login_time = time.time()
     #if headers.get("Host", "")[:9] != "localhost":
-    #    time.sleep(3)
-    #    st.rerun()
+    time.sleep(3)
+    st.rerun()
 #st.warning(headers)
 #st.warning(USER_ID)
 # headers辞書をJSON文字列に変換

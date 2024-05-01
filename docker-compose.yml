@@ -15,7 +15,7 @@ services:
       - "80:80"
     volumes:
       - ./data/apache_log:/var/log/apache2 # apache2のlog保存用
-      - /etc/letsencrypt:/etc/letsencrypt # letsencryptの証明書保存用
+      #- /etc/letsencrypt:/etc/letsencrypt # letsencryptの証明書保存用
       - ./dns_challenge:/root/
     # コンテナ実行時に使用
     environment:

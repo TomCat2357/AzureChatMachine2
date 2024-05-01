@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, jsonify
+from flask import Flask, render_template, request, redirect, jsonify,make_response
 from cryptography.fernet import Fernet
 import redis,os, jwt
 
@@ -63,6 +63,31 @@ def save_instruction():
 @app.route('/f_back', methods=['POST'])
 def back():
     return redirect(f'https://{DOMAIN_NAME}')
+
+@app.route('/f_logout_success')
+def logout_success():
+    # クッキー名 'mod_auth_openidc_session' のクッキーを削除
+    response = make_response("""
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="refresh" content="3;url=https://{DOMAIN_NAME}">
+        <title>Logout</title>
+    </head>
+    <body>
+        <p>Logoutされました。3秒後にリダイレクトします。</p>
+        <script>
+            setTimeout(function() {
+                window.location.href = 'https://{DOMAIN_NAME}';
+            }, 3000);
+        </script>
+    </body>
+    </html>
+    """)
+    response.set_cookie('mod_auth_openidc_session', '', expires=0)
+    return response
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
